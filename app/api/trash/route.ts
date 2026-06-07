@@ -1,14 +1,11 @@
-import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { NextRequest, NextResponse } from 'next/server';
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
-  }
-
+export async function POST(req: NextRequest) {
   try {
+    const body = await req.json();
     const url = "https://api.ibroadcast.com/s/JSON/status";
     const payload = {
-      ...req.body,
+      ...body,
       mode: 'trash',
       client_id: process.env.IBROADCAST_CLIENT_ID,
     };
@@ -22,8 +19,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
     
     const data = await response.json();
-    return res.status(200).json(data);
+    return NextResponse.json(data);
   } catch (error: any) {
-    return res.status(500).json({ error: error.message });
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
