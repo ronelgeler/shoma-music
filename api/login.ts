@@ -8,6 +8,7 @@ export default async function handler(req, res) {
     const payload = {
       ...req.body,
       client_id: process.env.IBROADCAST_CLIENT_ID,
+      app_id: process.env.IBROADCAST_CLIENT_ID || 1000,
     };
     
     const response = await fetch(url, {
