@@ -55,19 +55,31 @@ class handler(BaseHTTPRequestHandler):
             if 'entries' in info:
                 info = info['entries'][0]
             
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                filename = ydl.prepare_filename(info)
-                
-            # Extract title and artist
-            raw_title = info.get('title', 'Unknown Title')
-            artist = info.get('uploader', 'Unknown Artist')
-            title = raw_title
+            # Extract title and artist more robustly
+            # Use 'title' or 'track' for the song name
+            # Use 'artist', 'uploader', or 'creator' for the artist name
+            raw_title = info.get('title') or info.get('track') or 'Unknown Title'
+            raw_artist = info.get('artist') or info.get('uploader') or info.get('creator') or 'Unknown Artist'
             
+            title = raw_title
+            artist = raw_artist
+            
+            # If the title looks like "Artist - Title", split it
             if ' - ' in raw_title:
                 parts = raw_title.split(' - ', 1)
                 artist = parts[0].strip()
                 title = parts[1].strip()
+            elif 'by' in raw_title.lower():
+                # Handle SoundCloud style "Title by Artist" if necessary
+                pass
 
+            # Final check to avoid empty strings
+            title = title or 'Unknown Title'
+            artist = artist or 'Unknown Artist'
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                filename = ydl.prepare_filename(info)
+                
             # Add ID3 tags (m4a/mp4 uses different tag keys)
             try:
                 audio = MP4(filename)
@@ -75,7 +87,7 @@ class handler(BaseHTTPRequestHandler):
                     audio.add_tags()
                 audio.tags['\xa9nam'] = title  # Title
                 audio.tags['\xa9ART'] = artist # Artist
-                audio.tags['\xa9alb'] = "YouTube Download" # Album
+                audio.tags['\xa9alb'] = "Cloud Library" # Album
                 audio.save()
             except Exception as e:
                 print("Failed to add tags:", e)
@@ -83,7 +95,9 @@ class handler(BaseHTTPRequestHandler):
             # Upload to iBroadcast
             upload_url = "https://sync.ibroadcast.com"
             with open(filename, 'rb') as f:
-                files = {'file': (f"{artist} - {title}.m4a", f, 'audio/mp4')}
+                # Use a clean display name for the file being uploaded
+                display_filename = f"{artist} - {title}.m4a".replace("/", "_").replace("\\", "_")
+                files = {'file': (display_filename, f, 'audio/mp4')}
                 user_id = data.get('userId', token)
                 payload = {
                     'user_id': user_id,
