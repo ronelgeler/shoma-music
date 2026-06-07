@@ -30,13 +30,32 @@ class handler(BaseHTTPRequestHandler):
                 'extractor_args': {'youtube': ['player_client=android']}
             }
             
+            info = None
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    search_query = query
+                    if not search_query.startswith("http"):
+                        search_query = f"ytsearch:{query}"
+                    info = ydl.extract_info(search_query, download=True)
+            except Exception as e:
+                print(f"YouTube download failed: {e}. Falling back to SoundCloud...")
+                # Fallback to SoundCloud
+                ydl_opts_sc = {
+                    'format': 'bestaudio[ext=m4a]/bestaudio/best',
+                    'outtmpl': '/tmp/%(id)s.%(ext)s',
+                    'noplaylist': True,
+                    'quiet': True,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts_sc) as ydl:
+                    search_query = query
+                    if not search_query.startswith("http"):
+                        search_query = f"scsearch:{query}"
+                    info = ydl.extract_info(search_query, download=True)
+
+            if 'entries' in info:
+                info = info['entries'][0]
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                if not query.startswith("http"):
-                    query = f"ytsearch:{query}"
-                info = ydl.extract_info(query, download=True)
-                if 'entries' in info:
-                    info = info['entries'][0]
-                
                 filename = ydl.prepare_filename(info)
                 
             # Extract title and artist
