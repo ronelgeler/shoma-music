@@ -18,28 +18,45 @@ export async function POST(req: NextRequest) {
     let streamUrl = '';
 
     // 1. Search & Get Info
-    if (query.includes('youtube.com') || query.includes('youtu.be')) {
-        const info = await play.video_info(query);
-        title = info.video_details.title || 'Unknown';
-        artist = info.video_details.channel?.name || 'Unknown';
-        const stream = await play.stream(query);
-        streamUrl = (stream as any).url;
-    } else if (query.includes('soundcloud.com')) {
-        const info = await play.soundcloud(query);
-        title = (info as any).name || 'Unknown';
-        artist = (info as any).user?.username || 'Unknown';
-        const stream = await play.stream(query);
-        streamUrl = (stream as any).url;
-    } else {
-        // General Search
-        const results = await play.search(query, { limit: 1 });
-        if (!results.length) throw new Error("No results found");
-        const video = results[0];
-        title = video.title || 'Unknown';
-        artist = video.channel?.name || 'Unknown';
-        console.log(`[SHOMA] Found: ${title}`);
-        const stream = await play.stream(video.url);
-        streamUrl = (stream as any).url;
+    try {
+        if (query.includes('youtube.com') || query.includes('youtu.be')) {
+            const info = await play.video_info(query);
+            title = info.video_details.title || 'Unknown';
+            artist = info.video_details.channel?.name || 'Unknown';
+            const stream = await play.stream(query);
+            streamUrl = (stream as any).url;
+        } else if (query.includes('soundcloud.com')) {
+            const info = await play.soundcloud(query);
+            title = (info as any).name || 'Unknown';
+            artist = (info as any).user?.username || 'Unknown';
+            const stream = await play.stream(query);
+            streamUrl = (stream as any).url;
+        } else {
+            // General Search - Try YouTube first
+            try {
+                const results = await play.search(query, { limit: 1 });
+                if (!results.length) throw new Error("No YouTube results");
+                const video = results[0];
+                title = video.title || 'Unknown';
+                artist = video.channel?.name || 'Unknown';
+                console.log(`[SHOMA] YouTube Found: ${title}`);
+                const stream = await play.stream(video.url);
+                streamUrl = (stream as any).url;
+            } catch (ytError: any) {
+                console.warn(`[SHOMA] YouTube Bot Blocked: ${ytError.message}. Switching to SoundCloud...`);
+                // Fallback to SoundCloud Search
+                const results = await play.search(query, { limit: 1, source: { soundcloud: 'tracks' } });
+                if (!results.length) throw new Error("No results found on YouTube or SoundCloud");
+                const track = results[0];
+                title = (track as any).name || track.title || 'Unknown';
+                artist = (track as any).user?.username || (track as any).channel?.name || 'Unknown Artist';
+                console.log(`[SHOMA] SoundCloud Found: ${title}`);
+                const stream = await play.stream(track.url);
+                streamUrl = (stream as any).url;
+            }
+        }
+    } catch (error: any) {
+        throw new Error(`Failed to find or stream song: ${error.message}`);
     }
 
     // Metadata Cleanup
