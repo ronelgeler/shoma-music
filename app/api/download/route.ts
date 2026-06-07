@@ -48,10 +48,10 @@ export async function POST(req: NextRequest) {
                 const results = await play.search(query, { limit: 1, source: { soundcloud: 'tracks' } });
                 if (!results.length) throw new Error("No results found on YouTube or SoundCloud");
                 const track = results[0];
-                title = (track as any).name || track.title || 'Unknown';
+                title = (track as any).name || (track as any).title || 'Unknown';
                 artist = (track as any).user?.username || (track as any).channel?.name || 'Unknown Artist';
                 console.log(`[SHOMA] SoundCloud Found: ${title}`);
-                const stream = await play.stream(track.url);
+                const stream = await play.stream((track as any).url);
                 streamUrl = (stream as any).url;
             }
         }
