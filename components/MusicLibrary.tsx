@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { loginToIBroadcast, fetchLibrary } from '@/lib/ibroadcast';
+import { loginToIBroadcast, fetchLibrary, deleteTrack } from '@/lib/ibroadcast';
 import { usePlayerStore, Track } from '@/lib/store';
 import TrackList from './TrackList';
 import SearchBar from './SearchBar';
@@ -19,22 +19,27 @@ export default function MusicLibrary() {
   const [downloadMsg, setDownloadMsg] = useState('');
 
   const loadLibrary = async (currentToken: string, currentUserId: string) => {
-    const libraryData = await fetchLibrary(currentToken, currentUserId);
-    const parsedTracks: Track[] = [];
-    if (libraryData && libraryData.tracks) {
-      for (const [uid, trackData] of Object.entries(libraryData.tracks)) {
-        const t = trackData as any;
-        parsedTracks.push({
-          uid,
-          title: t.title || 'Unknown Title',
-          artist: t.artist || 'Unknown Artist',
-          album: t.album || 'Unknown Album',
-          year: t.year?.toString() || '',
-          length: t.length || 0,
-        });
+    try {
+      const libraryData = await fetchLibrary(currentToken, currentUserId);
+      const parsedTracks: Track[] = [];
+      if (libraryData && libraryData.tracks) {
+        for (const [uid, trackData] of Object.entries(libraryData.tracks)) {
+          if (uid === 'map') continue;
+          const t = trackData as any;
+          parsedTracks.push({
+            uid,
+            title: t.title || 'Unknown Title',
+            artist: t.artist || 'Unknown Artist',
+            album: t.album || 'Unknown Album',
+            year: t.year?.toString() || '',
+            length: t.length || 0,
+          });
+        }
       }
+      setTracks(parsedTracks);
+    } catch (err) {
+      console.error("Failed to load library:", err);
     }
-    setTracks(parsedTracks);
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -57,7 +62,7 @@ export default function MusicLibrary() {
     if (!downloadQuery || !token || !userId) return;
     
     setIsDownloading(true);
-    setDownloadMsg('');
+    setDownloadMsg('Downloading and uploading to your library...');
     try {
       const res = await fetch('/api/download', {
         method: 'POST',
@@ -65,18 +70,30 @@ export default function MusicLibrary() {
         body: JSON.stringify({ query: downloadQuery, token, userId })
       });
       const data = await res.json();
-      if (res.ok) {
-        setDownloadMsg('Song downloaded and added to library!');
+      if (res.ok && data.success) {
+        setDownloadMsg('Song added! It may take a minute to appear.');
         setDownloadQuery('');
-        // Refresh library
-        await loadLibrary(token, userId);
+        // Wait a bit and refresh
+        setTimeout(() => loadLibrary(token, userId), 2000);
       } else {
-        setDownloadMsg('Error: ' + data.error);
+        setDownloadMsg('Error: ' + (data.error || 'Failed to process song'));
       }
     } catch (err) {
       setDownloadMsg('Download failed.');
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  const handleDeleteTrack = async (trackId: string) => {
+    if (!token || !userId) return;
+    if (!confirm('Are you sure you want to delete this track?')) return;
+
+    try {
+      await deleteTrack(trackId, token, userId);
+      setTracks(tracks.filter(t => t.uid !== trackId));
+    } catch (err) {
+      alert('Failed to delete track');
     }
   };
 
@@ -135,14 +152,14 @@ export default function MusicLibrary() {
   return (
     <div className="pb-32">
       <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-        <div>
+        <div className="flex-1">
           <h1 className="text-4xl font-bold text-white mb-4">Your Library</h1>
           <SearchBar value={search} onChange={setSearch} />
         </div>
         
-        <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full md:w-96">
+        <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full md:w-96 shadow-lg">
           <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-            <DownloadCloud size={16} /> Add new song
+            <DownloadCloud size={16} className="text-neutral-400" /> Add new song
           </h3>
           <form onSubmit={handleDownload} className="flex gap-2">
             <input
@@ -156,19 +173,22 @@ export default function MusicLibrary() {
             <button
               type="submit"
               disabled={isDownloading}
-              className="bg-white text-black px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center disabled:opacity-70 min-w-[80px]"
+              className="bg-white text-black px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center disabled:opacity-70 min-w-[80px] hover:scale-105 transition-transform"
             >
               {isDownloading ? <Loader2 size={16} className="animate-spin" /> : 'Get'}
             </button>
           </form>
-          {downloadMsg && <p className="text-xs mt-2 text-neutral-400">{downloadMsg}</p>}
+          {downloadMsg && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
         </div>
       </div>
 
       {tracks.length === 0 ? (
-        <div className="text-neutral-400 text-center mt-12">No tracks found. Add a song above!</div>
+        <div className="text-neutral-400 text-center mt-12 py-20 border-2 border-dashed border-neutral-800 rounded-2xl">
+          <p className="text-lg mb-2">No tracks found.</p>
+          <p className="text-sm">Type a song name above to start your collection!</p>
+        </div>
       ) : (
-        <TrackList tracks={filteredTracks} />
+        <TrackList tracks={filteredTracks} onDelete={handleDeleteTrack} />
       )}
     </div>
   );

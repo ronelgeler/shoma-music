@@ -55,27 +55,26 @@ class handler(BaseHTTPRequestHandler):
             if 'entries' in info:
                 info = info['entries'][0]
             
-            # Extract title and artist more robustly
-            # Use 'title' or 'track' for the song name
-            # Use 'artist', 'uploader', or 'creator' for the artist name
-            raw_title = info.get('title') or info.get('track') or 'Unknown Title'
-            raw_artist = info.get('artist') or info.get('uploader') or info.get('creator') or 'Unknown Artist'
+            # Robust metadata extraction
+            title = info.get('track') or info.get('title')
+            artist = info.get('artist') or info.get('uploader') or info.get('creator') or info.get('uploader_id')
             
-            title = raw_title
-            artist = raw_artist
-            
-            # If the title looks like "Artist - Title", split it
-            if ' - ' in raw_title:
-                parts = raw_title.split(' - ', 1)
-                artist = parts[0].strip()
-                title = parts[1].strip()
-            elif 'by' in raw_title.lower():
-                # Handle SoundCloud style "Title by Artist" if necessary
-                pass
+            # If still missing, try to parse from the full title
+            if not title or title.lower() == 'unknown title' or title == 'undefined':
+                full_title = info.get('title') or 'Unknown Title'
+                if ' - ' in full_title:
+                    parts = full_title.split(' - ', 1)
+                    artist = parts[0].strip()
+                    title = parts[1].strip()
+                else:
+                    title = full_title
 
-            # Final check to avoid empty strings
-            title = title or 'Unknown Title'
-            artist = artist or 'Unknown Artist'
+            if not artist or artist.lower() == 'unknown artist' or artist == 'undefined':
+                artist = info.get('uploader') or info.get('creator') or 'Unknown Artist'
+
+            # Clean up strings
+            title = str(title).strip()
+            artist = str(artist).strip()
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 filename = ydl.prepare_filename(info)
@@ -85,19 +84,20 @@ class handler(BaseHTTPRequestHandler):
                 audio = MP4(filename)
                 if audio.tags is None:
                     audio.add_tags()
+                # iBroadcast relies heavily on these tags for library display
                 audio.tags['\xa9nam'] = title  # Title
                 audio.tags['\xa9ART'] = artist # Artist
-                audio.tags['\xa9alb'] = "Cloud Library" # Album
+                audio.tags['\xa9alb'] = "Shoma Downloads" # Album
                 audio.save()
             except Exception as e:
-                print("Failed to add tags:", e)
+                print(f"Failed to add tags to {filename}: {e}")
                 
             # Upload to iBroadcast
             upload_url = "https://sync.ibroadcast.com"
             with open(filename, 'rb') as f:
-                # Use a clean display name for the file being uploaded
-                display_filename = f"{artist} - {title}.m4a".replace("/", "_").replace("\\", "_")
-                files = {'file': (display_filename, f, 'audio/mp4')}
+                # Use the clean metadata for the upload filename
+                safe_display_name = f"{artist} - {title}.m4a".replace("/", "_").replace("\\", "_")
+                files = {'file': (safe_display_name, f, 'audio/mp4')}
                 user_id = data.get('userId', token)
                 payload = {
                     'user_id': user_id,

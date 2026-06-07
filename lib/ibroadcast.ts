@@ -41,6 +41,24 @@ export async function fetchLibrary(token: string, userId: string) {
   return data.library;
 }
 
+export async function deleteTrack(trackId: string, token: string, userId: string) {
+  const url = "/api/trash";
+  const payload = {
+    user_id: userId,
+    token: token,
+    tracks: [trackId],
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  return data;
+}
+
 export function getStreamUrl(trackId: string, token: string, userId: string) {
   return `https://streaming.ibroadcast.com/stream/${trackId}?user_id=${userId}&token=${token}`;
 }
