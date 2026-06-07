@@ -23,13 +23,13 @@ export async function POST(req: NextRequest) {
         title = info.video_details.title || 'Unknown';
         artist = info.video_details.channel?.name || 'Unknown';
         const stream = await play.stream(query);
-        streamUrl = stream.url;
+        streamUrl = (stream as any).url;
     } else if (query.includes('soundcloud.com')) {
         const info = await play.soundcloud(query);
         title = (info as any).name || 'Unknown';
         artist = (info as any).user?.username || 'Unknown';
         const stream = await play.stream(query);
-        streamUrl = stream.url;
+        streamUrl = (stream as any).url;
     } else {
         // General Search
         const results = await play.search(query, { limit: 1 });
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
         artist = video.channel?.name || 'Unknown';
         console.log(`[SHOMA] Found: ${title}`);
         const stream = await play.stream(video.url);
-        streamUrl = stream.url;
+        streamUrl = (stream as any).url;
     }
 
     // Metadata Cleanup
