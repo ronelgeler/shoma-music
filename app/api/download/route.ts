@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import ytsr from 'ytsr';
+import ytSearch from 'yt-search';
 import ytdl from '@distube/ytdl-core';
 import axios from 'axios';
 import FormData from 'form-data';
 
-export const maxDuration = 60; // Max out Vercel timeout
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,36 +14,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
 
-    // 1. Search YouTube
     let videoUrl = query;
     let title = 'Unknown Title';
     let artist = 'Unknown Artist';
 
+    // 1. Search YouTube or Get Info
     if (!query.startsWith('http')) {
-      const filters1 = await ytsr.getFilters(query);
-      const filter1 = filters1.get('Type')?.get('Video');
-      if (!filter1?.url) throw new Error('Search failed');
-      const searchResults = await ytsr(filter1.url, { limit: 1 });
-      const item = searchResults.items[0] as any;
-      if (!item) throw new Error('No video found');
-      videoUrl = item.url;
-      title = item.title;
-      artist = item.author?.name || 'Unknown Artist';
+      const searchResults = await ytSearch(query);
+      const video = searchResults.videos[0];
+      if (!video) throw new Error('No video found');
+      videoUrl = video.url;
+      title = video.title;
+      artist = video.author.name || 'Unknown Artist';
     } else {
       const info = await ytdl.getBasicInfo(videoUrl);
       title = info.videoDetails.title;
       artist = info.videoDetails.author.name;
     }
 
-    // Clean metadata
+    // Clean metadata logic
     if (title.includes(' - ')) {
       const parts = title.split(' - ');
       artist = parts[0].trim();
       title = parts[1].trim();
+    } else if (title.includes(' by ')) {
+        const parts = title.split(' by ');
+        title = parts[0].trim();
+        artist = parts[1].trim();
     }
 
-    // 2. Download Stream
-    // Note: We stream directly to memory to avoid Vercel filesystem issues
+    // 2. Download Stream (Memory)
     const stream = ytdl(videoUrl, { 
         filter: 'audioonly',
         quality: 'highestaudio'
@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
     formData.append('token', token);
     formData.append('method', 'ibroadcast.upload');
     formData.append('client', 'shoma-music');
-    formData.append('version', '1.0');
+    formData.append('version', '1.1');
     formData.append('client_id', process.env.IBROADCAST_CLIENT_ID);
     formData.append('client_secret', process.env.IBROADCAST_CLIENT_SECRET);
 
