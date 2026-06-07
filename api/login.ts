@@ -5,12 +5,17 @@ export default async function handler(req, res) {
 
   try {
     const url = "https://api.ibroadcast.com/s/JSON/status";
+    const payload = {
+      ...req.body,
+      client_id: process.env.IBROADCAST_CLIENT_ID,
+    };
+    
     const response = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(payload),
     });
     
     const data = await response.json();

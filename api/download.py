@@ -105,7 +105,9 @@ class handler(BaseHTTPRequestHandler):
                     'method': 'ibroadcast.upload',
                     'client': 'shoma-music',
                     'version': '0.1',
-                    'file_path': safe_display_name
+                    'file_path': safe_display_name,
+                    'client_id': os.environ.get('IBROADCAST_CLIENT_ID'),
+                    'client_secret': os.environ.get('IBROADCAST_CLIENT_SECRET')
                 }
                 
                 res = requests.post(upload_url, data=payload, files=files)
