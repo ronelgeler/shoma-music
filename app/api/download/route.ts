@@ -69,10 +69,10 @@ export async function POST(req: NextRequest) {
         const track = scResults.collection?.[0];
         if (!track) throw new Error("No SoundCloud results");
 
-        console.log(`DEBUG: SoundCloud found: "${track.title}"`);
-        title = track.title;
-        artist = track.user?.username || 'Unknown Artist';
-        stream = await scdl.download(track.permalink_url);
+        console.log(`DEBUG: SoundCloud found: "${(track as any).title}"`);
+        title = (track as any).title;
+        artist = (track as any).user?.username || 'Unknown Artist';
+        stream = await scdl.download((track as any).permalink_url);
       } catch (scError: any) {
         console.error(`DEBUG: SoundCloud also failed: ${scError.message}`);
         throw new Error("Could not find or stream song from any source");
