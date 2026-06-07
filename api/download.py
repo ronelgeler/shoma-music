@@ -102,7 +102,10 @@ class handler(BaseHTTPRequestHandler):
                 payload = {
                     'user_id': user_id,
                     'token': token,
-                    'method': 'ibroadcast.upload'
+                    'method': 'ibroadcast.upload',
+                    'client': 'shoma-music',
+                    'version': '0.1',
+                    'file_path': safe_display_name
                 }
                 
                 res = requests.post(upload_url, data=payload, files=files)

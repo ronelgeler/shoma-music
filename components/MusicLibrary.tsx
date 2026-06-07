@@ -17,6 +17,24 @@ export default function MusicLibrary() {
   const [downloadQuery, setDownloadQuery] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (isDownloading) {
+      setDownloadProgress(0);
+      interval = setInterval(() => {
+        setDownloadProgress((prev) => {
+          if (prev >= 95) return prev; // Stall at 95% until done
+          const step = Math.random() * 5;
+          return Math.min(prev + step, 95);
+        });
+      }, 800);
+    } else {
+      setDownloadProgress(0);
+    }
+    return () => clearInterval(interval);
+  }, [isDownloading]);
 
   const loadLibrary = async (currentToken: string, currentUserId: string) => {
     try {
@@ -178,7 +196,21 @@ export default function MusicLibrary() {
               {isDownloading ? <Loader2 size={16} className="animate-spin" /> : 'Get'}
             </button>
           </form>
-          {downloadMsg && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
+          {isDownloading && (
+            <div className="mt-4">
+              <div className="flex justify-between text-[10px] text-neutral-500 mb-1 px-1 uppercase font-bold tracking-wider">
+                <span>Downloading & Processing</span>
+                <span>{Math.round(downloadProgress)}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/50">
+                <div 
+                  className="h-full bg-white transition-all duration-500 ease-out shadow-[0_0_8px_rgba(255,255,255,0.3)]" 
+                  style={{ width: `${downloadProgress}%` }} 
+                />
+              </div>
+            </div>
+          )}
+          {downloadMsg && !isDownloading && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
         </div>
       </div>
 
