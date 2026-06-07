@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import ytSearch from 'yt-search';
 import ytdl from '@distube/ytdl-core';
 import scdl from 'soundcloud-downloader';
+import * as cheerio from 'cheerio'; // Force bundling
 
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
+  // Use cheerio in a dummy way to prevent it being tree-shaken out
+  const _ = cheerio.load('<html></html>');
+  
   try {
     const { query, token, userId } = await req.json();
 
