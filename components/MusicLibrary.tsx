@@ -1,10 +1,10 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
 import { loginToIBroadcast, fetchLibrary, deleteTrack, createPlaylist, appendToPlaylist } from '@/lib/ibroadcast';
-import { usePlayerStore, Track } from '@/lib/store';
+import { usePlayerStore, Track, Playlist } from '@/lib/store';
 import TrackList from './TrackList';
 import SearchBar from './SearchBar';
-import { Loader2, DownloadCloud, Search, Music } from 'lucide-react';
+import { Loader2, DownloadCloud, Search, Music, Home, ListMusic, Plus } from 'lucide-react';
 
 export default function MusicLibrary() {
   const [email, setEmail] = useState('');
@@ -22,6 +22,10 @@ export default function MusicLibrary() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
+
+  const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
+  const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -46,7 +50,6 @@ export default function MusicLibrary() {
       const parsedTracks: Track[] = [];
       const parsedPlaylists: any[] = [];
       
-      // iBroadcast library data can be in .library.tracks or just .tracks or at the root
       const rawTracks = libraryData?.library?.tracks || libraryData?.tracks || libraryData;
       
       if (rawTracks && typeof rawTracks === 'object') {
@@ -157,7 +160,6 @@ export default function MusicLibrary() {
     e.preventDefault();
     if (!downloadQuery.trim()) return;
     
-    // If it's a URL, go straight to download
     if (downloadQuery.includes('http://') || downloadQuery.includes('https://')) {
       handleDownloadSelection(downloadQuery);
       return;
@@ -191,9 +193,9 @@ export default function MusicLibrary() {
   const handleDownloadSelection = async (queryUrl: string) => {
     if (!token || !userId) return;
     
-    setSearchResults([]); // Hide results
+    setSearchResults([]);
     setIsDownloading(true);
-    setDownloadProgress(0); // Reset progress
+    setDownloadProgress(0);
     setDownloadMsg('Downloading and uploading to your library...');
     try {
       const currentTrackCount = tracks.length;
@@ -210,7 +212,6 @@ export default function MusicLibrary() {
         let newCount = currentTrackCount;
         let attempts = 0;
         
-        // Poll every 2 seconds for up to 30 seconds to see if the track count increased
         while (newCount <= currentTrackCount && attempts < 15) {
           await new Promise(resolve => setTimeout(resolve, 2000));
           try {
@@ -227,13 +228,13 @@ export default function MusicLibrary() {
         }
         
         await loadLibrary(token, userId);
-        setDownloadProgress(100); // Complete!
+        setDownloadProgress(100);
         setDownloadMsg('Song added!');
         setDownloadQuery('');
         setTimeout(() => {
           setIsDownloading(false);
           setDownloadProgress(0);
-        }, 3000); // Keep 100% for 3 seconds
+        }, 3000);
       } else {
         setIsDownloading(false);
         setDownloadMsg('Error: ' + (data.error || 'Failed to process song'));
@@ -285,22 +286,48 @@ export default function MusicLibrary() {
          await loadLibrary(token, userId);
          alert('Playlist created and song added!');
       } else {
-         await loadLibrary(token, userId); // Reload just in case
+         await loadLibrary(token, userId);
       }
     } catch (err) {
       alert('Failed to create playlist');
     }
   };
 
+  const handleCreateEmptyPlaylist = async () => {
+    if (!token || !userId || !newPlaylistName.trim()) return;
+    try {
+      await createPlaylist(newPlaylistName, token, userId);
+      await loadLibrary(token, userId);
+      setNewPlaylistName('');
+      setIsCreatingPlaylist(false);
+    } catch (err) {
+      alert('Failed to create playlist');
+    }
+  };
+
   const filteredTracks = useMemo(() => {
-    if (!search) return tracks;
+    let sourceTracks = tracks;
+    if (activePlaylistId) {
+      const p = playlists.find(p => p.uid === activePlaylistId);
+      if (p) {
+        sourceTracks = p.tracks.map(tId => tracks.find(t => t.uid === tId)).filter(Boolean) as Track[];
+      } else {
+        sourceTracks = [];
+      }
+    }
+
+    if (!search) return sourceTracks;
     const lower = search.toLowerCase();
-    return tracks.filter(t => 
+    return sourceTracks.filter(t => 
       t.title.toLowerCase().includes(lower) || 
       t.artist.toLowerCase().includes(lower) || 
       t.album.toLowerCase().includes(lower)
     );
-  }, [tracks, search]);
+  }, [tracks, search, activePlaylistId, playlists]);
+
+  const activePlaylistName = activePlaylistId 
+    ? playlists.find(p => p.uid === activePlaylistId)?.name || 'Playlist'
+    : 'All Tracks';
 
   if (!token) {
     return (
@@ -345,96 +372,164 @@ export default function MusicLibrary() {
   }
 
   return (
-    <div className="pb-32">
-      <div className="flex flex-col md:flex-row md:items-start justify-between mb-8 gap-4">
-        <div className="flex-1 mt-auto">
-          <h1 className="text-4xl font-bold text-white mb-4">Your Library</h1>
-          <SearchBar value={search} onChange={setSearch} />
+    <div className="flex flex-col md:flex-row min-h-screen -mx-4 md:-mx-8 -mt-16 pt-16 pb-32">
+      {/* Sidebar */}
+      <div className="w-full md:w-64 bg-black p-6 border-r border-neutral-800 flex flex-col md:min-h-screen">
+        <div className="space-y-2 mb-8">
+          <button 
+            onClick={() => setActivePlaylistId(null)}
+            className={`w-full flex items-center gap-4 px-4 py-3 rounded-md transition font-medium ${!activePlaylistId ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <Home size={20} /> All Tracks
+          </button>
         </div>
-        
-        <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full md:w-96 shadow-lg md:mt-0 relative">
-          <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-            <DownloadCloud size={16} className="text-neutral-400" /> Search & Add Song
-          </h3>
-          <form onSubmit={handleSearchSubmit} className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Type song name (e.g. 'hello')"
-              className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-white text-sm focus:outline-none focus:border-white"
-              value={downloadQuery}
-              onChange={e => setDownloadQuery(e.target.value)}
-              required
-            />
-            <button
-              type="submit"
-              disabled={isSearching || isDownloading}
-              className="bg-white text-black px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center disabled:opacity-70 min-w-[80px] hover:scale-105 transition-transform"
+
+        <div className="flex-1 flex flex-col">
+          <div className="flex items-center justify-between text-neutral-400 px-4 mb-4">
+            <span className="text-xs uppercase font-bold tracking-wider">Playlists</span>
+            <button 
+              onClick={() => setIsCreatingPlaylist(!isCreatingPlaylist)}
+              className="hover:text-white transition"
+              title="Create Playlist"
             >
-              {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              <Plus size={16} />
             </button>
-          </form>
+          </div>
 
-          {/* Search Results Dropdown */}
-          {searchResults.length > 0 && (
-            <div className="absolute left-0 right-0 top-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto">
-              <div className="p-2 space-y-1">
-                {searchResults.map((res, i) => (
-                  <button
-                    key={i}
-                    onClick={() => handleDownloadSelection(res.url)}
-                    className="w-full text-left flex items-center gap-3 p-2 hover:bg-neutral-800 rounded-lg transition-colors group"
-                  >
-                    <div className="w-10 h-10 bg-neutral-800 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
-                      {res.artwork ? (
-                        <img src={res.artwork} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
-                      ) : (
-                        <Music size={16} className="text-neutral-500" />
-                      )}
-                    </div>
-                    <div className="flex-1 overflow-hidden">
-                      <p className="text-sm font-medium text-white truncate">{res.title}</p>
-                      <p className="text-xs text-neutral-400 truncate">{res.artist}</p>
-                    </div>
-                    <span className="text-xs text-neutral-500 pr-2">{res.duration}</span>
-                    <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white" />
-                  </button>
-                ))}
+          {isCreatingPlaylist && (
+            <div className="px-4 mb-4">
+              <input 
+                autoFocus
+                type="text"
+                placeholder="Playlist name..."
+                value={newPlaylistName}
+                onChange={e => setNewPlaylistName(e.target.value)}
+                onKeyDown={e => { if(e.key === 'Enter') handleCreateEmptyPlaylist(); }}
+                className="w-full bg-neutral-800 text-white text-sm px-3 py-2 rounded border border-neutral-700 focus:outline-none focus:border-white mb-2"
+              />
+              <div className="flex gap-2">
+                <button 
+                  onClick={handleCreateEmptyPlaylist}
+                  disabled={!newPlaylistName.trim()}
+                  className="bg-white text-black text-xs font-bold py-1.5 px-3 rounded disabled:opacity-50 flex-1"
+                >
+                  Create
+                </button>
+                <button 
+                  onClick={() => setIsCreatingPlaylist(false)}
+                  className="bg-neutral-800 text-white text-xs font-bold py-1.5 px-3 rounded flex-1"
+                >
+                  Cancel
+                </button>
               </div>
             </div>
           )}
 
-          {isDownloading && (
-            <div className="mt-4">
-              <div className="flex justify-between text-[10px] text-neutral-500 mb-1 px-1 uppercase font-bold tracking-wider">
-                <span>{downloadProgress >= 100 ? 'Success' : 'Downloading & Processing'}</span>
-                <span>{Math.round(downloadProgress)}%</span>
-              </div>
-              <div className="w-full h-2.5 bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/50">
-                <div 
-                  className="h-full bg-white transition-all duration-500 ease-out shadow-[0_0_12px_rgba(255,255,255,0.4)]" 
-                  style={{ width: `${downloadProgress}%` }} 
-                />
-              </div>
-            </div>
-          )}
-          {downloadMsg && !isDownloading && downloadProgress === 0 && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
-          {downloadMsg && downloadProgress >= 100 && <p className="text-xs mt-2 text-green-400 font-medium">{downloadMsg}</p>}
+          <div className="space-y-1 overflow-y-auto max-h-[40vh] md:max-h-none">
+            {playlists.map(p => (
+              <button
+                key={p.uid}
+                onClick={() => setActivePlaylistId(p.uid)}
+                className={`w-full text-left px-4 py-2 text-sm rounded-md transition truncate flex items-center gap-3 ${activePlaylistId === p.uid ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}
+              >
+                <ListMusic size={16} /> {p.name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      {tracks.length === 0 ? (
-        <div className="text-neutral-400 text-center mt-12 py-20 border-2 border-dashed border-neutral-800 rounded-2xl">
-          <p className="text-lg mb-2">No tracks found.</p>
-          <p className="text-sm">Type a song name above to start your collection!</p>
+      {/* Main Content */}
+      <div className="flex-1 p-6 md:p-8">
+        <div className="flex flex-col xl:flex-row xl:items-start justify-between mb-8 gap-6">
+          <div className="flex-1 mt-auto">
+            <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">{activePlaylistName}</h1>
+            <SearchBar value={search} onChange={setSearch} />
+          </div>
+          
+          <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full xl:w-96 shadow-lg relative shrink-0">
+            <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
+              <DownloadCloud size={16} className="text-neutral-400" /> Search & Add Song
+            </h3>
+            <form onSubmit={handleSearchSubmit} className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Type song name (e.g. 'hello')"
+                className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-white text-sm focus:outline-none focus:border-white"
+                value={downloadQuery}
+                onChange={e => setDownloadQuery(e.target.value)}
+                required
+              />
+              <button
+                type="submit"
+                disabled={isSearching || isDownloading}
+                className="bg-white text-black px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center disabled:opacity-70 min-w-[80px] hover:scale-105 transition-transform"
+              >
+                {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+              </button>
+            </form>
+
+            {searchResults.length > 0 && (
+              <div className="absolute left-0 right-0 top-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto">
+                <div className="p-2 space-y-1">
+                  {searchResults.map((res, i) => (
+                    <button
+                      key={i}
+                      onClick={() => handleDownloadSelection(res.url)}
+                      className="w-full text-left flex items-center gap-3 p-2 hover:bg-neutral-800 rounded-lg transition-colors group"
+                    >
+                      <div className="w-10 h-10 bg-neutral-800 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+                        {res.artwork ? (
+                          <img src={res.artwork} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
+                        ) : (
+                          <Music size={16} className="text-neutral-500" />
+                        )}
+                      </div>
+                      <div className="flex-1 overflow-hidden">
+                        <p className="text-sm font-medium text-white truncate">{res.title}</p>
+                        <p className="text-xs text-neutral-400 truncate">{res.artist}</p>
+                      </div>
+                      <span className="text-xs text-neutral-500 pr-2">{res.duration}</span>
+                      <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {isDownloading && (
+              <div className="mt-4">
+                <div className="flex justify-between text-[10px] text-neutral-500 mb-1 px-1 uppercase font-bold tracking-wider">
+                  <span>{downloadProgress >= 100 ? 'Success' : 'Downloading & Processing'}</span>
+                  <span>{Math.round(downloadProgress)}%</span>
+                </div>
+                <div className="w-full h-2.5 bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/50">
+                  <div 
+                    className="h-full bg-white transition-all duration-500 ease-out shadow-[0_0_12px_rgba(255,255,255,0.4)]" 
+                    style={{ width: `${downloadProgress}%` }} 
+                  />
+                </div>
+              </div>
+            )}
+            {downloadMsg && !isDownloading && downloadProgress === 0 && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
+            {downloadMsg && downloadProgress >= 100 && <p className="text-xs mt-2 text-green-400 font-medium">{downloadMsg}</p>}
+          </div>
         </div>
-      ) : (
-        <TrackList 
-          tracks={filteredTracks} 
-          onDelete={handleDeleteTrack} 
-          onAddToPlaylist={handleAddToPlaylist}
-          onCreatePlaylistAndAdd={handleCreatePlaylistAndAdd}
-        />
-      )}
+
+        {filteredTracks.length === 0 ? (
+          <div className="text-neutral-400 text-center mt-12 py-20 border-2 border-dashed border-neutral-800 rounded-2xl">
+            <p className="text-lg mb-2">{search ? 'No tracks match your search.' : (activePlaylistId ? 'This playlist is empty.' : 'No tracks found.')}</p>
+            <p className="text-sm">Type a song name above to start your collection!</p>
+          </div>
+        ) : (
+          <TrackList 
+            tracks={filteredTracks} 
+            onDelete={handleDeleteTrack} 
+            onAddToPlaylist={handleAddToPlaylist}
+            onCreatePlaylistAndAdd={handleCreatePlaylistAndAdd}
+          />
+        )}
+      </div>
     </div>
   );
 }

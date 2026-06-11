@@ -2,10 +2,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlayerStore } from '@/lib/store';
 import { getStreamUrl } from '@/lib/ibroadcast';
-import { Play, Pause, SkipForward, SkipBack, Volume2 } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, Volume2, Shuffle } from 'lucide-react';
 
 export default function Player() {
-  const { currentTrack, isPlaying, setIsPlaying, playNext, playPrevious, token, userId } = usePlayerStore();
+  const { currentTrack, isPlaying, setIsPlaying, playNext, playPrevious, toggleShuffle, isShuffle, token, userId } = usePlayerStore();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [progress, setProgress] = useState(0);
 
@@ -34,7 +34,7 @@ export default function Player() {
   const streamUrl = getStreamUrl(currentTrack.uid, currentTrack.track_url, token, userId);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 text-white">
+    <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 text-white z-50">
       <audio
         ref={audioRef}
         src={streamUrl}
@@ -55,6 +55,13 @@ export default function Player() {
 
         <div className="flex flex-col items-center w-1/3">
           <div className="flex items-center space-x-6">
+            <button 
+              onClick={toggleShuffle} 
+              className={`transition hover:scale-105 ${isShuffle ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
+              title="Shuffle"
+            >
+              <Shuffle size={18} />
+            </button>
             <button onClick={playPrevious} className="text-neutral-400 hover:text-white transition">
               <SkipBack size={20} />
             </button>
@@ -67,6 +74,7 @@ export default function Player() {
             <button onClick={playNext} className="text-neutral-400 hover:text-white transition">
               <SkipForward size={20} />
             </button>
+            <div className="w-[18px]" /> {/* Spacer for balance */}
           </div>
           <div className="w-full max-w-md mt-2 h-1 bg-neutral-700 rounded-full overflow-hidden">
             <div className="h-full bg-white transition-all" style={{ width: `${progress}%` }} />
