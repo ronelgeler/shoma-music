@@ -1,7 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Track, Playlist, usePlayerStore } from '@/lib/store';
-import { Play, Trash2, PlusCircle } from 'lucide-react';
+import { Play, Trash2, PlusCircle, Clock } from 'lucide-react';
 
 interface TrackListProps {
   tracks: Track[];
@@ -9,6 +9,14 @@ interface TrackListProps {
   onAddToPlaylist?: (trackId: string, playlistId: string) => void;
   onCreatePlaylistAndAdd?: (trackId: string, playlistName: string) => void;
 }
+
+const formatTime = (val: number | string | undefined) => {
+  let secs = Number(val) || 0;
+  if (secs > 10000) secs = Math.floor(secs / 1000); // handle ms if any
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
 
 export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreatePlaylistAndAdd }: TrackListProps) {
   const { currentTrack, setQueue, setQueueIndex, setIsPlaying, setCurrentTrack, playlists } = usePlayerStore();
@@ -36,10 +44,11 @@ export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreateP
 
   return (
     <div className="w-full text-left text-neutral-400 text-sm pb-10">
-      <div className="grid grid-cols-[40px_1fr_1fr_80px] gap-4 p-3 border-b border-neutral-800 font-medium">
+      <div className="grid grid-cols-[40px_1fr_1fr_60px_80px] gap-4 p-3 border-b border-neutral-800 font-medium items-center">
         <div>#</div>
         <div>Title</div>
         <div>Album</div>
+        <div className="flex items-center"><Clock size={14} className="text-neutral-500" /></div>
         <div className="text-right pr-2">Actions</div>
       </div>
       <div className="flex flex-col mt-2 space-y-1">
@@ -50,7 +59,7 @@ export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreateP
           return (
             <div 
               key={track.uid} 
-              className={`relative grid grid-cols-[40px_1fr_1fr_80px] gap-4 p-3 rounded-md hover:bg-neutral-800/50 group transition ${isCurrent ? 'bg-neutral-800/30 text-green-500' : ''}`}
+              className={`relative grid grid-cols-[40px_1fr_1fr_60px_80px] gap-4 p-3 rounded-md hover:bg-neutral-800/50 group transition items-center ${isCurrent ? 'bg-neutral-800/30 text-green-500' : ''}`}
             >
               <div className="flex items-center">
                 <span className="group-hover:hidden">{index + 1}</span>
@@ -66,6 +75,7 @@ export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreateP
                 <div className="text-xs mt-0.5 truncate">{track.artist}</div>
               </div>
               <div className="flex items-center truncate">{track.album || 'Unknown Album'}</div>
+              <div className="flex items-center text-xs text-neutral-500">{formatTime(track.length)}</div>
               <div className="flex items-center justify-end pr-1 gap-2">
                 <button 
                   onClick={() => setActiveMenuId(showMenu ? null : track.uid)}

@@ -4,10 +4,27 @@ import { usePlayerStore } from '@/lib/store';
 import { getStreamUrl } from '@/lib/ibroadcast';
 import { Play, Pause, SkipForward, SkipBack, Volume2, Shuffle } from 'lucide-react';
 
+const formatTime = (val: number | string | undefined) => {
+  let secs = Number(val) || 0;
+  if (secs > 10000) secs = Math.floor(secs / 1000); // fallback for ms
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+};
+
 export default function Player() {
   const { currentTrack, isPlaying, setIsPlaying, playNext, playPrevious, toggleShuffle, isShuffle, token, userId } = usePlayerStore();
   const audioRef = useRef<HTMLAudioElement>(null);
-  const [progress, setProgress] = useState(0);
+  
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [volume, setVolume] = useState(1);
+
+  useEffect(() => {
+    if (audioRef.current) {
+      audioRef.current.volume = volume;
+    }
+  }, [volume]);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -21,8 +38,21 @@ export default function Player() {
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
-      setProgress((audioRef.current.currentTime / audioRef.current.duration) * 100);
+      setCurrentTime(audioRef.current.currentTime);
+      setDuration(audioRef.current.duration || 0);
     }
+  };
+
+  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newTime = Number(e.target.value);
+    if (audioRef.current) {
+      audioRef.current.currentTime = newTime;
+      setCurrentTime(newTime);
+    }
+  };
+
+  const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setVolume(Number(e.target.value));
   };
 
   const handleEnded = () => {
@@ -39,6 +69,7 @@ export default function Player() {
         ref={audioRef}
         src={streamUrl}
         onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleTimeUpdate}
         onEnded={handleEnded}
         autoPlay={isPlaying}
       />
@@ -76,16 +107,34 @@ export default function Player() {
             </button>
             <div className="w-[18px]" /> {/* Spacer for balance */}
           </div>
-          <div className="w-full max-w-md mt-2 h-1 bg-neutral-700 rounded-full overflow-hidden">
-            <div className="h-full bg-white transition-all" style={{ width: `${progress}%` }} />
+          
+          <div className="flex items-center w-full max-w-md mt-2 gap-3 text-xs text-neutral-400">
+            <span>{formatTime(currentTime)}</span>
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              value={currentTime}
+              onChange={handleSeek}
+              className="w-full h-1 cursor-pointer accent-white bg-neutral-700 rounded-full appearance-none"
+              style={{ outline: 'none' }}
+            />
+            <span>{formatTime(duration || currentTrack.length)}</span>
           </div>
         </div>
 
         <div className="flex items-center justify-end w-1/3 space-x-3 text-neutral-400">
           <Volume2 size={20} />
-          <div className="w-24 h-1 bg-neutral-700 rounded-full overflow-hidden">
-             <div className="h-full bg-white" style={{ width: '100%' }} />
-          </div>
+          <input
+            type="range"
+            min={0}
+            max={1}
+            step={0.01}
+            value={volume}
+            onChange={handleVolume}
+            className="w-24 h-1 cursor-pointer accent-white bg-neutral-700 rounded-full appearance-none"
+            style={{ outline: 'none' }}
+          />
         </div>
       </div>
     </div>
