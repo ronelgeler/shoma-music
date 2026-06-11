@@ -168,6 +168,8 @@ export default function MusicLibrary() {
     setDownloadProgress(0); // Reset progress
     setDownloadMsg('Downloading and uploading to your library...');
     try {
+      const currentTrackCount = tracks.length;
+      
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -175,13 +177,34 @@ export default function MusicLibrary() {
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        setDownloadMsg('Processing... waiting for song to appear in library.');
+        
+        let newCount = currentTrackCount;
+        let attempts = 0;
+        
+        // Poll every 2 seconds for up to 30 seconds to see if the track count increased
+        while (newCount <= currentTrackCount && attempts < 15) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          try {
+            const libData = await fetchLibrary(token, userId);
+            const rawTracks = libData?.library?.tracks || libData?.tracks || libData;
+            if (rawTracks) {
+               const entries = Array.isArray(rawTracks) 
+                 ? rawTracks 
+                 : Object.entries(rawTracks).filter(x => x[0] !== 'map');
+               newCount = entries.length;
+            }
+          } catch(e) {}
+          attempts++;
+        }
+        
+        await loadLibrary(token, userId);
         setDownloadProgress(100); // Complete!
-        setDownloadMsg('Song added! It may take a minute to appear.');
+        setDownloadMsg('Song added!');
         setDownloadQuery('');
         setTimeout(() => {
           setIsDownloading(false);
           setDownloadProgress(0);
-          loadLibrary(token, userId);
         }, 3000); // Keep 100% for 3 seconds
       } else {
         setIsDownloading(false);
