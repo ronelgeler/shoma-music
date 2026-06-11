@@ -53,10 +53,10 @@ export async function fetchLibrary(token: string, userId: string) {
 export async function deleteTrack(trackId: string, token: string, userId: string) {
   const url = "/api/trash";
   const payload = {
-    mode: "trash",
+    mode: "trashtracks",
     user_id: userId,
     token: token,
-    tracks: [trackId],
+    tracks: [Number(trackId)],
     client: "shoma-music",
     version: "1.4"
   };

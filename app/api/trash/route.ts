@@ -4,9 +4,11 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const url = "https://api.ibroadcast.com/s/JSON/status";
+    
+    // 1. Send the tracks to the trash
     const payload = {
       ...body,
-      mode: 'trash',
+      mode: 'trashtracks',
       client_id: process.env.IBROADCAST_CLIENT_ID,
     };
     
@@ -18,7 +20,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify(payload),
     });
     
-    // Empty the trash permanently
+    // 2. Empty the trash permanently
     const emptyPayload = {
       user_id: body.user_id,
       token: body.token,
