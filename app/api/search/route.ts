@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import youtube from 'youtube-ext';
+import yts from 'yt-search';
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,21 +12,22 @@ export async function POST(req: NextRequest) {
     console.log(`[SHOMA] Searching for: ${query}`);
     
     // We search on YouTube
-    const results = await youtube.search(query, { limit: 20 } as any);
+    const results = await yts(query);
     
     if (!results.videos || !results.videos.length) {
       return NextResponse.json({ results: [] });
     }
     
     const formattedResults = results.videos
+      .slice(0, 20)
       .map((video: any) => {
         return {
-          id: video.id,
+          id: video.videoId,
           title: video.title,
-          artist: video.channel?.name || 'Unknown Artist',
-          duration: video.duration?.text || '0:00',
+          artist: video.author?.name || 'Unknown Artist',
+          duration: video.timestamp || '0:00',
           url: video.url,
-          artwork: video.thumbnails?.[0]?.url || ''
+          artwork: video.thumbnail || ''
         };
       });
 
