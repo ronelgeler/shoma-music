@@ -11,6 +11,12 @@ export interface Track {
   track_url?: string;
 }
 
+export interface Playlist {
+  uid: string;
+  name: string;
+  tracks: string[];
+}
+
 interface PlayerState {
   currentTrack: Track | null;
   isPlaying: boolean;
@@ -18,11 +24,13 @@ interface PlayerState {
   queueIndex: number;
   token: string | null;
   userId: string | null;
+  playlists: Playlist[];
   setCurrentTrack: (track: Track) => void;
   setIsPlaying: (isPlaying: boolean) => void;
   setQueue: (queue: Track[]) => void;
   setQueueIndex: (index: number) => void;
   setAuth: (token: string, userId: string) => void;
+  setPlaylists: (playlists: Playlist[]) => void;
   playNext: () => void;
   playPrevious: () => void;
 }
@@ -34,11 +42,13 @@ export const usePlayerStore = create<PlayerState>((set) => ({
   queueIndex: 0,
   token: null,
   userId: null,
+  playlists: [],
   setCurrentTrack: (track) => set({ currentTrack: track }),
   setIsPlaying: (isPlaying) => set({ isPlaying }),
   setQueue: (queue) => set({ queue }),
   setQueueIndex: (index) => set({ queueIndex: index }),
   setAuth: (token, userId) => set({ token, userId }),
+  setPlaylists: (playlists) => set({ playlists }),
   playNext: () => set((state) => {
     const nextIndex = state.queueIndex + 1;
     if (nextIndex < state.queue.length) {

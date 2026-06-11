@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useMemo } from 'react';
-import { loginToIBroadcast, fetchLibrary, deleteTrack } from '@/lib/ibroadcast';
+import { loginToIBroadcast, fetchLibrary, deleteTrack, createPlaylist, appendToPlaylist } from '@/lib/ibroadcast';
 import { usePlayerStore, Track } from '@/lib/store';
 import TrackList from './TrackList';
 import SearchBar from './SearchBar';
@@ -13,7 +13,7 @@ export default function MusicLibrary() {
   const [error, setError] = useState('');
   const [tracks, setTracks] = useState<Track[]>([]);
   const [search, setSearch] = useState('');
-  const { setAuth, token, userId } = usePlayerStore();
+  const { setAuth, token, userId, playlists, setPlaylists } = usePlayerStore();
   
   const [downloadQuery, setDownloadQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -44,6 +44,7 @@ export default function MusicLibrary() {
     try {
       const libraryData = await fetchLibrary(currentToken, currentUserId);
       const parsedTracks: Track[] = [];
+      const parsedPlaylists: any[] = [];
       
       // iBroadcast library data can be in .library.tracks or just .tracks or at the root
       const rawTracks = libraryData?.library?.tracks || libraryData?.tracks || libraryData;
@@ -104,7 +105,34 @@ export default function MusicLibrary() {
           });
         }
       }
+      
+      const rawPlaylists = libraryData?.library?.playlists || libraryData?.playlists || {};
+      if (rawPlaylists && typeof rawPlaylists === 'object') {
+        const entries = Array.isArray(rawPlaylists) 
+          ? rawPlaylists.map((p, i) => [String(i), p]) 
+          : Object.entries(rawPlaylists).filter(x => x[0] !== 'map');
+          
+        for (const [pid, pData] of entries) {
+          if (!pData) continue;
+          if (Array.isArray(pData)) {
+             parsedPlaylists.push({
+               uid: String(pid),
+               name: pData[0] || 'Unknown Playlist',
+               tracks: (pData[1] || []).map(String)
+             });
+          } else if (typeof pData === 'object') {
+             const p = pData as any;
+             parsedPlaylists.push({
+               uid: String(p.uid || p.id || pid),
+               name: p.name || 'Unknown Playlist',
+               tracks: (p.tracks || []).map(String)
+             });
+          }
+        }
+      }
+
       setTracks(parsedTracks);
+      setPlaylists(parsedPlaylists);
     } catch (err) {
       console.error("Failed to load library:", err);
     }
@@ -225,6 +253,42 @@ export default function MusicLibrary() {
       setTracks(tracks.filter(t => t.uid !== trackId));
     } catch (err) {
       alert('Failed to delete track');
+    }
+  };
+
+  const handleAddToPlaylist = async (trackId: string, playlistId: string) => {
+    if (!token || !userId) return;
+    try {
+      const playlist = playlists.find(p => p.uid === playlistId);
+      const existingTracks = playlist?.tracks || [];
+      if (existingTracks.includes(trackId)) {
+        alert('Song is already in this playlist');
+        return;
+      }
+      
+      const newTracks = [...existingTracks, trackId];
+      await appendToPlaylist(playlistId, newTracks, token, userId);
+      await loadLibrary(token, userId);
+      alert('Added to playlist!');
+    } catch (err) {
+      alert('Failed to add to playlist');
+    }
+  };
+
+  const handleCreatePlaylistAndAdd = async (trackId: string, playlistName: string) => {
+    if (!token || !userId) return;
+    try {
+      const data = await createPlaylist(playlistName, token, userId);
+      const newPlaylistId = data.playlist_id || data.id;
+      if (newPlaylistId) {
+         await appendToPlaylist(String(newPlaylistId), [trackId], token, userId);
+         await loadLibrary(token, userId);
+         alert('Playlist created and song added!');
+      } else {
+         await loadLibrary(token, userId); // Reload just in case
+      }
+    } catch (err) {
+      alert('Failed to create playlist');
     }
   };
 
@@ -364,7 +428,12 @@ export default function MusicLibrary() {
           <p className="text-sm">Type a song name above to start your collection!</p>
         </div>
       ) : (
-        <TrackList tracks={filteredTracks} onDelete={handleDeleteTrack} />
+        <TrackList 
+          tracks={filteredTracks} 
+          onDelete={handleDeleteTrack} 
+          onAddToPlaylist={handleAddToPlaylist}
+          onCreatePlaylistAndAdd={handleCreatePlaylistAndAdd}
+        />
       )}
     </div>
   );

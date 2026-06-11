@@ -71,6 +71,44 @@ export async function deleteTrack(trackId: string, token: string, userId: string
   return data;
 }
 
+export async function createPlaylist(name: string, token: string, userId: string) {
+  const url = "/api/playlist";
+  const payload = {
+    mode: "createplaylist",
+    name: name,
+    tracks: [],
+    user_id: userId,
+    token: token,
+    client: "shoma-music",
+    version: "1.4"
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+}
+
+export async function appendToPlaylist(playlistId: string, trackIds: string[], token: string, userId: string) {
+  const url = "/api/playlist";
+  const payload = {
+    mode: "appendplaylist",
+    playlist_id: playlistId,
+    tracks: trackIds,
+    user_id: userId,
+    token: token,
+    client: "shoma-music",
+    version: "1.4"
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return response.json();
+}
+
 export function getStreamUrl(trackId: string, trackUrl: string | undefined, token: string, userId: string) {
   if (trackUrl) {
     const cleanTrackUrl = trackUrl.startsWith('/') ? trackUrl : `/${trackUrl}`;
