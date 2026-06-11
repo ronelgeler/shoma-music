@@ -24,10 +24,12 @@ export async function POST(req: NextRequest) {
     const emptyPayload = {
       user_id: body.user_id,
       token: body.token,
-      mode: 'trashtracks',
-      empty: true,
-      client_id: process.env.IBROADCAST_CLIENT_ID,
+      mode: 'emptytrash',
+      client_id: process.env.IBROADCAST_CLIENT_ID || 'shoma-music',
+      version: '1.4',
+      device_name: 'shoma-music-server'
     };
+    
     await fetch(url, {
       method: "POST",
       headers: {

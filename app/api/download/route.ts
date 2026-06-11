@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import scdl from 'soundcloud-downloader';
 import axios from 'axios';
 import FormData from 'form-data';
 import crypto from 'crypto';
 import NodeID3 from 'node-id3';
+import youtubedl from 'youtube-dl-exec';
+import youtube from 'youtube-ext';
 
 export const maxDuration = 60;
 
@@ -20,52 +21,45 @@ export async function POST(req: NextRequest) {
     let title = 'Unknown Title';
     let artist = 'Unknown Artist';
     let buffer: Buffer | null = null;
-    let actualQuery = query;
+    let targetUrl = query;
 
-    // 1. Process Input Query
     try {
-        if (query.includes('youtube.com') || query.includes('youtu.be')) {
-            console.log(`[SHOMA] Detected YouTube URL. Extracting metadata via OEmbed...`);
-            let ytUrl = query;
-            if (!ytUrl.startsWith('http')) ytUrl = `https://${ytUrl}`;
-            
-            const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(ytUrl)}&format=json`);
-            if (oembedRes.ok) {
-              const info = await oembedRes.json();
-              actualQuery = `${info.author_name || ''} ${info.title}`.trim();
-              console.log(`[SHOMA] Converted to query: ${actualQuery}`);
-            } else {
-              console.log(`[SHOMA] OEmbed failed, using original url as query`);
-            }
-        } else if (query.includes('soundcloud.com')) {
-            console.log(`[SHOMA] Detected SoundCloud URL.`);
-            const info = await scdl.getInfo(query);
-            title = info.title || 'Unknown';
-            artist = info.user?.username || 'Unknown';
-            const stream = await scdl.download(query);
-            const chunks: any[] = [];
-            for await (const chunk of stream) chunks.push(chunk);
-            buffer = Buffer.concat(chunks);
-            actualQuery = ''; // Flag as already downloaded
-        }
-        
-        // 2. Perform SoundCloud Search if not already downloaded
-        if (actualQuery) {
-            console.log(`[SHOMA] Searching SoundCloud for: ${actualQuery}`);
-            const results = await scdl.search({ query: actualQuery, resourceType: 'tracks', limit: 1 });
-            if (!results.collection || !results.collection.length) throw new Error("No results found on SoundCloud");
-            
-            const track = results.collection[0] as any;
-            title = track.title || 'Unknown';
-            artist = track.user?.username || 'Unknown Artist';
-            console.log(`[SHOMA] SoundCloud Found: ${title} by ${artist}`);
-            
-            const stream = await scdl.download(track.permalink_url);
-            const chunks: any[] = [];
-            for await (const streamChunk of stream) chunks.push(streamChunk);
-            buffer = Buffer.concat(chunks);
+        if (!targetUrl.includes('youtube.com') && !targetUrl.includes('youtu.be') && !targetUrl.includes('soundcloud.com')) {
+             console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
+             const searchResults = await youtube.search(targetUrl, { limit: 1 });
+             if (!searchResults.videos || !searchResults.videos.length) {
+                 throw new Error("No videos found on YouTube");
+             }
+             targetUrl = searchResults.videos[0].url;
         }
 
+        console.log(`[SHOMA] Extracting metadata for: ${targetUrl}`);
+        const ytInfo = await youtubedl(targetUrl, {
+            dumpJson: true,
+            noWarnings: true,
+            callHome: false,
+            noCheckCertificate: true,
+            youtubeSkipDashManifest: true
+        });
+
+        title = ytInfo.title || 'Unknown Title';
+        artist = ytInfo.uploader || ytInfo.channel || 'Unknown Artist';
+        console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
+
+        console.log(`[SHOMA] Downloading best audio via yt-dlp...`);
+        const subprocess = youtubedl.exec(targetUrl, {
+            format: 'bestaudio',
+            output: '-',
+            noWarnings: true,
+            callHome: false,
+            noCheckCertificate: true
+        });
+
+        const chunks: any[] = [];
+        for await (const chunk of subprocess.stdout) {
+            chunks.push(chunk);
+        }
+        buffer = Buffer.concat(chunks);
     } catch (error: any) {
         throw new Error(`Failed to find or stream song: ${error.message}`);
     }
@@ -74,10 +68,8 @@ export async function POST(req: NextRequest) {
     if (title.includes(' - ')) {
         const parts = title.split(' - ');
         artist = parts[0].trim();
-        title = parts[1].trim();
+        title = parts.slice(1).join(' - ').trim();
     }
-
-    console.log(`[SHOMA] Streaming: ${title} by ${artist}`);
 
     if (!buffer) throw new Error("Could not obtain audio buffer");
     console.log(`[SHOMA] Buffered ${buffer.length} bytes`);

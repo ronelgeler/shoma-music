@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import scdl from 'soundcloud-downloader';
+import youtube from 'youtube-ext';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,29 +11,22 @@ export async function POST(req: NextRequest) {
 
     console.log(`[SHOMA] Searching for: ${query}`);
     
-    // We search on SoundCloud for tracks to provide a list
-    const results = await scdl.search({ query, resourceType: 'tracks', limit: 20 });
+    // We search on YouTube
+    const results = await youtube.search(query, { limit: 20 });
     
-    if (!results.collection || !results.collection.length) {
+    if (!results.videos || !results.videos.length) {
       return NextResponse.json({ results: [] });
     }
     
-    const formattedResults = results.collection
-      .filter((track: any) => track.duration >= 60000) // Exclude < 1 minute (previews)
-      .slice(0, 10)
-      .map((track: any) => {
-        const totalSeconds = Math.floor(track.duration / 1000);
-        const minutes = Math.floor(totalSeconds / 60);
-        const seconds = totalSeconds % 60;
-        const durationStr = `${minutes}:${seconds.toString().padStart(2, '0')}`;
-
+    const formattedResults = results.videos
+      .map((video: any) => {
         return {
-          id: track.id,
-          title: track.title,
-          artist: track.user?.username || 'Unknown',
-          duration: durationStr,
-          url: track.permalink_url,
-          artwork: track.artwork_url || track.user?.avatar_url
+          id: video.id,
+          title: video.title,
+          artist: video.channel?.name || 'Unknown Artist',
+          duration: video.duration?.text || '0:00',
+          url: video.url,
+          artwork: video.thumbnails?.[0]?.url || ''
         };
       });
 
