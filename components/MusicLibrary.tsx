@@ -331,6 +331,7 @@ export default function MusicLibrary() {
                       <p className="text-sm font-medium text-white truncate">{res.title}</p>
                       <p className="text-xs text-neutral-400 truncate">{res.artist}</p>
                     </div>
+                    <span className="text-xs text-neutral-500 pr-2">{res.duration}</span>
                     <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white" />
                   </button>
                 ))}
