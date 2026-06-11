@@ -31,7 +31,7 @@ export default function Player() {
 
   if (!currentTrack || !token || !userId) return null;
 
-  const streamUrl = getStreamUrl(currentTrack.file_id || currentTrack.uid, currentTrack.track_url, token, userId);
+  const streamUrl = getStreamUrl(currentTrack.uid, currentTrack.track_url, token, userId);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 text-white">

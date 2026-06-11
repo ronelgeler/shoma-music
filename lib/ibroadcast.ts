@@ -73,9 +73,8 @@ export async function deleteTrack(trackId: string, token: string, userId: string
 
 export function getStreamUrl(trackId: string, trackUrl: string | undefined, token: string, userId: string) {
   if (trackUrl) {
-    const expires = Date.now() + 86400000; // 1 day
     const cleanTrackUrl = trackUrl.startsWith('/') ? trackUrl : `/${trackUrl}`;
-    return `https://streaming.ibroadcast.com/128${cleanTrackUrl}?Expires=${expires}&Signature=${token}&file_id=${trackId}&user_id=${userId}&platform=shoma-music&version=1.4`;
+    return `https://streaming.ibroadcast.com${cleanTrackUrl}?Signature=${token}&file_id=${trackId}&user_id=${userId}&platform=shoma-music&version=1.4`;
   }
   return `https://streaming.ibroadcast.com/stream/${trackId}?user_id=${userId}&token=${token}&client=shoma-music&version=1.4`;
 }
