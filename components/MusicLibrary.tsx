@@ -4,7 +4,7 @@ import { loginToIBroadcast, fetchLibrary, deleteTrack } from '@/lib/ibroadcast';
 import { usePlayerStore, Track } from '@/lib/store';
 import TrackList from './TrackList';
 import SearchBar from './SearchBar';
-import { Loader2, DownloadCloud } from 'lucide-react';
+import { Loader2, DownloadCloud, Search, Music } from 'lucide-react';
 
 export default function MusicLibrary() {
   const [email, setEmail] = useState('');
@@ -14,7 +14,11 @@ export default function MusicLibrary() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [search, setSearch] = useState('');
   const { setAuth, token, userId } = usePlayerStore();
+  
   const [downloadQuery, setDownloadQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
@@ -25,7 +29,7 @@ export default function MusicLibrary() {
       setDownloadProgress(0);
       interval = setInterval(() => {
         setDownloadProgress((prev) => {
-          if (prev >= 95) return prev; // Stall at 95% until done
+          if (prev >= 95) return prev;
           const step = Math.random() * 5;
           return Math.min(prev + step, 95);
         });
@@ -40,17 +44,63 @@ export default function MusicLibrary() {
     try {
       const libraryData = await fetchLibrary(currentToken, currentUserId);
       const parsedTracks: Track[] = [];
-      if (libraryData && libraryData.tracks) {
-        for (const [uid, trackData] of Object.entries(libraryData.tracks)) {
-          if (uid === 'map') continue;
-          const t = trackData as any;
+      
+      // iBroadcast library data can be in .library.tracks or just .tracks or at the root
+      const rawTracks = libraryData?.library?.tracks || libraryData?.tracks || libraryData;
+      
+      if (rawTracks && typeof rawTracks === 'object') {
+        const trackMap = rawTracks.map || {};
+        const titleIdx = trackMap['title'] ?? trackMap['name'] ?? trackMap['t'];
+        const artistIdx = trackMap['artist'] ?? trackMap['artist_name'] ?? trackMap['a'];
+        const albumIdx = trackMap['album'] ?? trackMap['album_name'] ?? trackMap['z'];
+        const yearIdx = trackMap['year'] ?? trackMap['y'];
+        const lengthIdx = trackMap['length'] ?? trackMap['l'];
+        const fileIdIdx = trackMap['file_id'] ?? trackMap['fileid'] ?? trackMap['f'];
+        const trackUrlIdx = trackMap['file'] ?? trackMap['path'] ?? trackMap['p'];
+
+        const trackEntries = Array.isArray(rawTracks) 
+          ? rawTracks.map(t => [t.id || t.uid || t.i, t])
+          : Object.entries(rawTracks);
+
+        for (const [uid, trackData] of trackEntries) {
+          if (uid === 'map' || !trackData) continue;
+          
+          let title = 'Unknown Title';
+          let artist = 'Unknown Artist';
+          let album = 'Unknown Album';
+          let year = '';
+          let length = 0;
+          let file_id = uid;
+          let track_url = '';
+
+          if (Array.isArray(trackData)) {
+             title = titleIdx !== undefined ? trackData[titleIdx] : 'Unknown Title';
+             artist = artistIdx !== undefined ? trackData[artistIdx] : 'Unknown Artist';
+             album = albumIdx !== undefined ? trackData[albumIdx] : 'Unknown Album';
+             year = yearIdx !== undefined ? trackData[yearIdx]?.toString() : '';
+             length = lengthIdx !== undefined ? trackData[lengthIdx] : 0;
+             file_id = fileIdIdx !== undefined ? String(trackData[fileIdIdx]) : uid;
+             track_url = trackUrlIdx !== undefined ? trackData[trackUrlIdx] : '';
+          } else if (typeof trackData === 'object') {
+             const t = trackData as any;
+             title = t.title || t.name || t.track_name || t.t || 'Unknown Title';
+             artist = t.artist || t.artist_name || t.a || 'Unknown Artist';
+             album = t.album || t.album_name || t.z || 'Unknown Album';
+             year = (t.year || t.y)?.toString() || '';
+             length = t.length || t.l || 0;
+             file_id = String(t.file_id || t.fileid || t.f || uid);
+             track_url = t.file || t.path || t.p || '';
+          }
+
           parsedTracks.push({
-            uid,
-            title: t.title || 'Unknown Title',
-            artist: t.artist || 'Unknown Artist',
-            album: t.album || 'Unknown Album',
-            year: t.year?.toString() || '',
-            length: t.length || 0,
+            uid: String(uid),
+            title,
+            artist,
+            album,
+            year,
+            length,
+            file_id,
+            track_url,
           });
         }
       }
@@ -75,31 +125,71 @@ export default function MusicLibrary() {
     }
   };
 
-  const handleDownload = async (e: React.FormEvent) => {
+  const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!downloadQuery || !token || !userId) return;
+    if (!downloadQuery.trim()) return;
     
+    // If it's a URL, go straight to download
+    if (downloadQuery.includes('http://') || downloadQuery.includes('https://')) {
+      handleDownloadSelection(downloadQuery);
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchResults([]);
+    setDownloadMsg('');
+    try {
+      const res = await fetch('/api/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: downloadQuery })
+      });
+      const data = await res.json();
+      if (res.ok && data.results) {
+        setSearchResults(data.results);
+        if (data.results.length === 0) {
+          setDownloadMsg('No results found.');
+        }
+      } else {
+        setDownloadMsg('Error: ' + (data.error || 'Failed to search'));
+      }
+    } catch (err) {
+      setDownloadMsg('Search failed.');
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleDownloadSelection = async (queryUrl: string) => {
+    if (!token || !userId) return;
+    
+    setSearchResults([]); // Hide results
     setIsDownloading(true);
+    setDownloadProgress(0); // Reset progress
     setDownloadMsg('Downloading and uploading to your library...');
     try {
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: downloadQuery, token, userId })
+        body: JSON.stringify({ query: queryUrl, token, userId })
       });
       const data = await res.json();
       if (res.ok && data.success) {
+        setDownloadProgress(100); // Complete!
         setDownloadMsg('Song added! It may take a minute to appear.');
         setDownloadQuery('');
-        // Wait a bit and refresh
-        setTimeout(() => loadLibrary(token, userId), 2000);
+        setTimeout(() => {
+          setIsDownloading(false);
+          setDownloadProgress(0);
+          loadLibrary(token, userId);
+        }, 3000); // Keep 100% for 3 seconds
       } else {
+        setIsDownloading(false);
         setDownloadMsg('Error: ' + (data.error || 'Failed to process song'));
       }
     } catch (err) {
-      setDownloadMsg('Download failed.');
-    } finally {
       setIsDownloading(false);
+      setDownloadMsg('Download failed.');
     }
   };
 
@@ -169,20 +259,20 @@ export default function MusicLibrary() {
 
   return (
     <div className="pb-32">
-      <div className="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-4">
-        <div className="flex-1">
+      <div className="flex flex-col md:flex-row md:items-start justify-between mb-8 gap-4">
+        <div className="flex-1 mt-auto">
           <h1 className="text-4xl font-bold text-white mb-4">Your Library</h1>
           <SearchBar value={search} onChange={setSearch} />
         </div>
         
-        <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full md:w-96 shadow-lg">
+        <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full md:w-96 shadow-lg md:mt-0 relative">
           <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-            <DownloadCloud size={16} className="text-neutral-400" /> Add new song
+            <DownloadCloud size={16} className="text-neutral-400" /> Search & Add Song
           </h3>
-          <form onSubmit={handleDownload} className="flex gap-2">
+          <form onSubmit={handleSearchSubmit} className="flex gap-2">
             <input
               type="text"
-              placeholder="Song name or YouTube URL"
+              placeholder="Type song name (e.g. 'hello')"
               className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-white text-sm focus:outline-none focus:border-white"
               value={downloadQuery}
               onChange={e => setDownloadQuery(e.target.value)}
@@ -190,27 +280,57 @@ export default function MusicLibrary() {
             />
             <button
               type="submit"
-              disabled={isDownloading}
+              disabled={isSearching || isDownloading}
               className="bg-white text-black px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center disabled:opacity-70 min-w-[80px] hover:scale-105 transition-transform"
             >
-              {isDownloading ? <Loader2 size={16} className="animate-spin" /> : 'Get'}
+              {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
             </button>
           </form>
+
+          {/* Search Results Dropdown */}
+          {searchResults.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto">
+              <div className="p-2 space-y-1">
+                {searchResults.map((res, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleDownloadSelection(res.url)}
+                    className="w-full text-left flex items-center gap-3 p-2 hover:bg-neutral-800 rounded-lg transition-colors group"
+                  >
+                    <div className="w-10 h-10 bg-neutral-800 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
+                      {res.artwork ? (
+                        <img src={res.artwork} alt="" className="w-full h-full object-cover opacity-80 group-hover:opacity-100" />
+                      ) : (
+                        <Music size={16} className="text-neutral-500" />
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                      <p className="text-sm font-medium text-white truncate">{res.title}</p>
+                      <p className="text-xs text-neutral-400 truncate">{res.artist}</p>
+                    </div>
+                    <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {isDownloading && (
             <div className="mt-4">
               <div className="flex justify-between text-[10px] text-neutral-500 mb-1 px-1 uppercase font-bold tracking-wider">
-                <span>Downloading & Processing</span>
+                <span>{downloadProgress >= 100 ? 'Success' : 'Downloading & Processing'}</span>
                 <span>{Math.round(downloadProgress)}%</span>
               </div>
-              <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/50">
+              <div className="w-full h-2.5 bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/50">
                 <div 
-                  className="h-full bg-white transition-all duration-500 ease-out shadow-[0_0_8px_rgba(255,255,255,0.3)]" 
+                  className="h-full bg-white transition-all duration-500 ease-out shadow-[0_0_12px_rgba(255,255,255,0.4)]" 
                   style={{ width: `${downloadProgress}%` }} 
                 />
               </div>
             </div>
           )}
-          {downloadMsg && !isDownloading && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
+          {downloadMsg && !isDownloading && downloadProgress === 0 && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
+          {downloadMsg && downloadProgress >= 100 && <p className="text-xs mt-2 text-green-400 font-medium">{downloadMsg}</p>}
         </div>
       </div>
 

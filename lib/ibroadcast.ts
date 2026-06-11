@@ -4,7 +4,8 @@ export async function loginToIBroadcast(email: string, password: string) {
     mode: "status",
     email_address: email,
     password: password,
-    client: "web",
+    client: "shoma-music",
+    version: "1.4"
   };
   const response = await fetch(url, {
     method: "POST",
@@ -15,12 +16,18 @@ export async function loginToIBroadcast(email: string, password: string) {
   });
   const data = await response.json();
   if (data.result === false) {
-    throw new Error("Login failed");
+    throw new Error(data.message || "Login failed");
   }
-  return {
-    token: data.user?.token,
-    userId: data.user?.id,
-  };
+  
+  // Resiliently grab token and user ID
+  const token = data.token || data.user?.token;
+  const userId = data.user?.user_id || data.user?.id || data.userId;
+  
+  if (!token || !userId) {
+    console.error("[SHOMA] Missing Auth Info in response:", data);
+  }
+
+  return { token, userId: String(userId) };
 }
 
 export async function fetchLibrary(token: string, userId: string) {
@@ -29,24 +36,8 @@ export async function fetchLibrary(token: string, userId: string) {
     mode: "library",
     user_id: userId,
     token: token,
-  };
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  return data.library;
-}
-
-export async function deleteTrack(trackId: string, token: string, userId: string) {
-  const url = "/api/trash";
-  const payload = {
-    user_id: userId,
-    token: token,
-    tracks: [trackId],
+    client: "shoma-music",
+    version: "1.4"
   };
   const response = await fetch(url, {
     method: "POST",
@@ -59,6 +50,32 @@ export async function deleteTrack(trackId: string, token: string, userId: string
   return data;
 }
 
-export function getStreamUrl(trackId: string, token: string, userId: string) {
-  return `https://streaming.ibroadcast.com/stream/${trackId}?user_id=${userId}&token=${token}`;
+export async function deleteTrack(trackId: string, token: string, userId: string) {
+  const url = "/api/trash";
+  const payload = {
+    mode: "trash",
+    user_id: userId,
+    token: token,
+    tracks: [trackId],
+    client: "shoma-music",
+    version: "1.4"
+  };
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await response.json();
+  return data;
+}
+
+export function getStreamUrl(trackId: string, trackUrl: string | undefined, token: string, userId: string) {
+  if (trackUrl) {
+    const expires = Date.now() + 86400000; // 1 day
+    const cleanTrackUrl = trackUrl.startsWith('/') ? trackUrl : `/${trackUrl}`;
+    return `https://streaming.ibroadcast.com/128${cleanTrackUrl}?Expires=${expires}&Signature=${token}&file_id=${trackId}&user_id=${userId}&platform=shoma-music&version=1.4`;
+  }
+  return `https://streaming.ibroadcast.com/stream/${trackId}?user_id=${userId}&token=${token}&client=shoma-music&version=1.4`;
 }

@@ -7,6 +7,8 @@ export interface Track {
   album: string;
   year?: string;
   length?: number;
+  file_id?: string;
+  track_url?: string;
 }
 
 interface PlayerState {
