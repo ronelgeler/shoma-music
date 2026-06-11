@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     try {
         if (!targetUrl.includes('youtube.com') && !targetUrl.includes('youtu.be') && !targetUrl.includes('soundcloud.com')) {
              console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
-             const searchResults = await youtube.search(targetUrl, { limit: 1 });
+             const searchResults = await youtube.search(targetUrl, { limit: 1 } as any);
              if (!searchResults.videos || !searchResults.videos.length) {
                  throw new Error("No videos found on YouTube");
              }
@@ -34,13 +34,13 @@ export async function POST(req: NextRequest) {
         }
 
         console.log(`[SHOMA] Extracting metadata for: ${targetUrl}`);
-        const ytInfo = await youtubedl(targetUrl, {
+        const ytInfo: any = await youtubedl(targetUrl, {
             dumpJson: true,
             noWarnings: true,
             callHome: false,
-            noCheckCertificate: true,
+            noCheckCertificates: true,
             youtubeSkipDashManifest: true
-        });
+        } as any);
 
         title = ytInfo.title || 'Unknown Title';
         artist = ytInfo.uploader || ytInfo.channel || 'Unknown Artist';
@@ -52,8 +52,8 @@ export async function POST(req: NextRequest) {
             output: '-',
             noWarnings: true,
             callHome: false,
-            noCheckCertificate: true
-        });
+            noCheckCertificates: true
+        } as any);
 
         const chunks: any[] = [];
         for await (const chunk of subprocess.stdout) {

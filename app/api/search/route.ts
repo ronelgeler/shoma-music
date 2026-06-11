@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
     console.log(`[SHOMA] Searching for: ${query}`);
     
     // We search on YouTube
-    const results = await youtube.search(query, { limit: 20 });
+    const results = await youtube.search(query, { limit: 20 } as any);
     
     if (!results.videos || !results.videos.length) {
       return NextResponse.json({ results: [] });
