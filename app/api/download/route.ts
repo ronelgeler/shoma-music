@@ -4,7 +4,7 @@ import FormData from 'form-data';
 import crypto from 'crypto';
 import NodeID3 from 'node-id3';
 import youtubedl from 'youtube-dl-exec';
-import yts from 'yt-search';
+import play from 'play-dl';
 
 export const maxDuration = 60;
 
@@ -26,11 +26,11 @@ export async function POST(req: NextRequest) {
     try {
         if (!targetUrl.includes('youtube.com') && !targetUrl.includes('youtu.be') && !targetUrl.includes('soundcloud.com')) {
              console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
-             const searchResults = await yts(targetUrl);
-             if (!searchResults.videos || !searchResults.videos.length) {
+             const searchResults = await play.search(targetUrl, { limit: 1 });
+             if (!searchResults || !searchResults.length) {
                  throw new Error("No videos found on YouTube");
              }
-             targetUrl = searchResults.videos[0].url;
+             targetUrl = searchResults[0].url;
         }
 
         console.log(`[SHOMA] Extracting metadata for: ${targetUrl}`);
