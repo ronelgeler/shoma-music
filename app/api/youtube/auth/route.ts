@@ -5,7 +5,7 @@ export async function GET(req: NextRequest) {
   try {
     const yt = await Innertube.create();
     
-    return new Promise((resolve) => {
+    return new Promise<Response>((resolve) => {
         yt.session.on('auth-pending', (data) => {
             resolve(NextResponse.json({ 
                 code: data.user_code, 
