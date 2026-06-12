@@ -51,13 +51,25 @@ export async function POST(req: NextRequest) {
             buffer = Buffer.concat(chunks);
         } else {
             console.log(`[SHOMA] Extracting YouTube metadata for: ${targetUrl}`);
-            const ytInfo = await ytdl.getInfo(targetUrl);
+            
+            // Add Agent to bypass bot protections using YOUTUBE_COOKIE env variable
+            let agent;
+            if (process.env.YOUTUBE_COOKIE) {
+                const cookies = process.env.YOUTUBE_COOKIE.split(';').map(c => {
+                    const [name, ...value] = c.split('=');
+                    return { name: name.trim(), value: value.join('=').trim() };
+                }).filter(c => c.name && c.value);
+                agent = ytdl.createAgent(cookies);
+                console.log(`[SHOMA] Using authenticated YouTube agent (Cookies provided)`);
+            }
+
+            const ytInfo = await ytdl.getInfo(targetUrl, { agent });
             title = ytInfo.videoDetails.title || 'Unknown Title';
             artist = ytInfo.videoDetails.author.name || 'Unknown Artist';
             console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
             console.log(`[SHOMA] Downloading best audio via ytdl-core-enhanced...`);
-            const stream = ytdl.downloadFromInfo(ytInfo, { quality: 'highestaudio' });
+            const stream = ytdl.downloadFromInfo(ytInfo, { quality: 'highestaudio', agent });
             
             const chunks: Buffer[] = await new Promise((resolve, reject) => {
                 const arr: Buffer[] = [];
