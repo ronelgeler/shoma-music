@@ -73,19 +73,36 @@ export default function Player() {
         onEnded={handleEnded}
         autoPlay={isPlaying}
       />
-      <div className="max-w-screen-xl mx-auto flex items-center justify-between">
-        <div className="flex items-center space-x-4 w-1/3">
-          <div className="w-12 h-12 bg-neutral-800 rounded flex items-center justify-center">
-            <span className="text-neutral-500 text-xs">No Cover</span>
+      <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0">
+        <div className="flex items-center justify-between w-full md:w-1/3 space-x-4">
+          <div className="flex items-center space-x-4 flex-1 overflow-hidden">
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-neutral-800 rounded flex items-center justify-center shrink-0">
+              <span className="text-neutral-500 text-[10px] md:text-xs text-center whitespace-nowrap">No Cover</span>
+            </div>
+            <div className="overflow-x-auto scrollbar-hide whitespace-nowrap flex-1">
+              <div className="font-semibold text-sm">{currentTrack.title}</div>
+              <div className="text-neutral-400 text-xs">{currentTrack.artist}</div>
+            </div>
           </div>
-          <div>
-            <div className="font-semibold text-sm line-clamp-1">{currentTrack.title}</div>
-            <div className="text-neutral-400 text-xs line-clamp-1">{currentTrack.artist}</div>
+          
+          <div className="flex md:hidden items-center space-x-3 shrink-0">
+            <button onClick={playPrevious} className="text-neutral-400 hover:text-white transition">
+              <SkipBack size={18} />
+            </button>
+            <button 
+              onClick={() => setIsPlaying(!isPlaying)} 
+              className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shrink-0"
+            >
+              {isPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+            </button>
+            <button onClick={playNext} className="text-neutral-400 hover:text-white transition">
+              <SkipForward size={18} />
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-col items-center w-1/3">
-          <div className="flex items-center space-x-6">
+        <div className="flex flex-col items-center w-full md:w-1/3 mt-1 md:mt-0">
+          <div className="hidden md:flex items-center space-x-6">
             <button 
               onClick={toggleShuffle} 
               className={`transition hover:scale-105 ${isShuffle ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
@@ -105,10 +122,10 @@ export default function Player() {
             <button onClick={playNext} className="text-neutral-400 hover:text-white transition">
               <SkipForward size={20} />
             </button>
-            <div className="w-[18px]" /> {/* Spacer for balance */}
+            <div className="w-[18px]" />
           </div>
           
-          <div className="flex items-center w-full max-w-md mt-2 gap-3 text-xs text-neutral-400">
+          <div className="flex items-center w-full max-w-md gap-3 text-xs text-neutral-400">
             <span>{formatTime(currentTime)}</span>
             <input
               type="range"
@@ -123,7 +140,7 @@ export default function Player() {
           </div>
         </div>
 
-        <div className="flex items-center justify-end w-1/3 space-x-3 text-neutral-400">
+        <div className="hidden md:flex items-center justify-end w-1/3 space-x-3 text-neutral-400">
           <Volume2 size={20} />
           <input
             type="range"

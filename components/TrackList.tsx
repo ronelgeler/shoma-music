@@ -43,40 +43,41 @@ export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreateP
   };
 
   return (
-    <div className="w-full text-left text-neutral-400 text-sm pb-10">
-      <div className="grid grid-cols-[40px_1fr_1fr_60px_80px] gap-4 p-3 border-b border-neutral-800 font-medium items-center">
-        <div>#</div>
-        <div>Title</div>
-        <div>Album</div>
-        <div className="flex items-center"><Clock size={14} className="text-neutral-500" /></div>
-        <div className="text-right pr-2">Actions</div>
-      </div>
-      <div className="flex flex-col mt-2 space-y-1">
-        {tracks.map((track, index) => {
-          const isCurrent = currentTrack?.uid === track.uid;
-          const showMenu = activeMenuId === track.uid;
-          
-          return (
-            <div 
-              key={track.uid} 
-              className={`relative grid grid-cols-[40px_1fr_1fr_60px_80px] gap-4 p-3 rounded-md hover:bg-neutral-800/50 group transition items-center ${isCurrent ? 'bg-neutral-800/30 text-green-500' : ''}`}
-            >
-              <div className="flex items-center">
-                <span className="group-hover:hidden">{index + 1}</span>
-                <button 
-                  onClick={() => handlePlay(index)}
-                  className="hidden group-hover:flex text-white"
-                >
-                  <Play size={16} fill="currentColor" />
-                </button>
-              </div>
-              <div className="overflow-hidden">
-                <div className={`font-medium truncate ${isCurrent ? 'text-green-500' : 'text-white'}`}>{track.title}</div>
-                <div className="text-xs mt-0.5 truncate">{track.artist}</div>
-              </div>
-              <div className="flex items-center truncate">{track.album || 'Unknown Album'}</div>
-              <div className="flex items-center text-xs text-neutral-500">{formatTime(track.length)}</div>
-              <div className="flex items-center justify-end pr-1 gap-2">
+    <div className="w-full text-left text-neutral-400 text-sm pb-10 overflow-x-auto scrollbar-hide">
+      <div className="min-w-max">
+        <div className="grid grid-cols-[40px_auto_auto_60px_80px] gap-8 p-3 border-b border-neutral-800 font-medium items-center">
+          <div>#</div>
+          <div>Title</div>
+          <div>Album</div>
+          <div className="flex items-center"><Clock size={14} className="text-neutral-500" /></div>
+          <div className="text-right pr-2">Actions</div>
+        </div>
+        <div className="flex flex-col mt-2 space-y-1">
+          {tracks.map((track, index) => {
+            const isCurrent = currentTrack?.uid === track.uid;
+            const showMenu = activeMenuId === track.uid;
+            
+            return (
+              <div 
+                key={track.uid} 
+                className={`relative grid grid-cols-[40px_auto_auto_60px_80px] gap-8 p-3 rounded-md hover:bg-neutral-800/50 group transition items-center ${isCurrent ? 'bg-neutral-800/30 text-green-500' : ''}`}
+              >
+                <div className="flex items-center">
+                  <span className="group-hover:hidden">{index + 1}</span>
+                  <button 
+                    onClick={() => handlePlay(index)}
+                    className="hidden group-hover:flex text-white"
+                  >
+                    <Play size={16} fill="currentColor" />
+                  </button>
+                </div>
+                <div className="whitespace-nowrap">
+                  <div className={`font-medium ${isCurrent ? 'text-green-500' : 'text-white'}`}>{track.title}</div>
+                  <div className="text-xs mt-0.5">{track.artist}</div>
+                </div>
+                <div className="flex items-center whitespace-nowrap">{track.album || 'Unknown Album'}</div>
+                <div className="flex items-center text-xs text-neutral-500 whitespace-nowrap">{formatTime(track.length)}</div>
+                <div className="flex items-center justify-end pr-1 gap-2 whitespace-nowrap">
                 <button 
                   onClick={() => setActiveMenuId(showMenu ? null : track.uid)}
                   className={`p-1.5 text-neutral-500 hover:text-white transition-colors ${showMenu ? 'opacity-100 text-white' : 'opacity-0 group-hover:opacity-100'}`}

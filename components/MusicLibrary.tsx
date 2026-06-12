@@ -430,9 +430,9 @@ export default function MusicLibrary() {
               <button
                 key={p.uid}
                 onClick={() => setActivePlaylistId(p.uid)}
-                className={`w-full text-left px-4 py-2 text-sm rounded-md transition truncate flex items-center gap-3 ${activePlaylistId === p.uid ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}
+                className={`w-full text-left px-4 py-2 text-sm rounded-md transition whitespace-nowrap overflow-x-auto scrollbar-hide flex items-center gap-3 ${activePlaylistId === p.uid ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}
               >
-                <ListMusic size={16} /> {p.name}
+                <ListMusic size={16} className="shrink-0" /> {p.name}
               </button>
             ))}
           </div>
@@ -485,9 +485,9 @@ export default function MusicLibrary() {
                           <Music size={16} className="text-neutral-500" />
                         )}
                       </div>
-                      <div className="flex-1 overflow-hidden">
-                        <p className="text-sm font-medium text-white truncate">{res.title}</p>
-                        <p className="text-xs text-neutral-400 truncate">{res.artist}</p>
+                      <div className="flex-1 whitespace-nowrap overflow-x-auto scrollbar-hide">
+                        <p className="text-sm font-medium text-white">{res.title}</p>
+                        <p className="text-xs text-neutral-400">{res.artist}</p>
                       </div>
                       <span className="text-xs text-neutral-500 pr-2">{res.duration}</span>
                       <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white" />

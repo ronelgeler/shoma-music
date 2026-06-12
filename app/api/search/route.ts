@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import play from 'play-dl';
+import { Innertube } from 'youtubei.js';
 
 export async function POST(req: NextRequest) {
   try {
@@ -11,23 +11,27 @@ export async function POST(req: NextRequest) {
 
     console.log(`[SHOMA] Searching for: ${query}`);
     
-    // Search using play-dl (resilient to most blocks)
-    const results = await play.search(query, { 
-      limit: 20,
-      source: { youtube: 'video' }
-    });
+    // Search using youtubei.js (resilient to most blocks)
+    const yt = await Innertube.create();
+    const search = await yt.search(query, { type: 'video' });
+    
+    const results = search.videos;
     
     if (!results || !results.length) {
       return NextResponse.json({ results: [] });
     }
     
-    const formattedResults = results.map((video: any) => {
+    const formattedResults = results.slice(0, 20).map((video: any) => {
+      let durationStr = '0:00';
+      if (video.duration) {
+        durationStr = video.duration.text || video.duration.toString();
+      }
       return {
         id: video.id,
-        title: video.title,
-        artist: video.channel?.name || 'Unknown Artist',
-        duration: video.durationRaw || '0:00',
-        url: video.url,
+        title: video.title?.text || video.title || 'Unknown Title',
+        artist: video.author?.name || 'Unknown Artist',
+        duration: durationStr,
+        url: `https://www.youtube.com/watch?v=${video.id}`,
         artwork: video.thumbnails?.[0]?.url || ''
       };
     });
