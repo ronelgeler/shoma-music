@@ -3,12 +3,51 @@ import axios from 'axios';
 import FormData from 'form-data';
 import crypto from 'crypto';
 import NodeID3 from 'node-id3';
-// @ts-ignore
-import ytdl from 'ytdl-core-enhanced';
 import { Innertube } from 'youtubei.js';
 import scdl from 'soundcloud-downloader';
 
 export const maxDuration = 60;
+
+function parseCookies(str: string) {
+    if (!str) return [];
+    
+    // Netscape format (tabs or comment header)
+    if (str.includes('\t') || str.includes('# Netscape')) {
+        return str.split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('#'))
+            .map(line => {
+                const parts = line.split('\t');
+                if (parts.length >= 7) {
+                    return { name: parts[5], value: parts[6] };
+                }
+                return null;
+            })
+            .filter((c): c is { name: string; value: string } => c !== null);
+    }
+    
+    // JSON format
+    if (str.trim().startsWith('[')) {
+        try {
+            const parsed = JSON.parse(str);
+            return parsed.map((c: any) => ({ 
+                name: c.name || c.key, 
+                value: c.value 
+            })).filter((c: any) => c.name && c.value);
+        } catch (e) {}
+    }
+
+    // Key=Value format
+    return str.split(';').map(c => {
+        const [name, ...value] = c.split('=');
+        if (!name || !value.length) return null;
+        return { name: name.trim(), value: value.join('=').trim() };
+    }).filter((c): c is { name: string; value: string } => c !== null);
+}
+
+function cookiesToString(cookies: { name: string; value: string }[]) {
+    return cookies.map(c => `${c.name}=${c.value}`).join('; ');
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -26,9 +65,17 @@ export async function POST(req: NextRequest) {
     let targetUrl = query;
 
     try {
+        const cookieStr = youtubeCookie || process.env.YOUTUBE_COOKIE;
+        const parsedCookies = parseCookies(cookieStr || '');
+        const finalCookieHeader = cookiesToString(parsedCookies);
+
+        const yt = await Innertube.create({ 
+            cookie: finalCookieHeader || undefined,
+            generate_session_locally: true
+        });
+
         if (!targetUrl.includes('http')) {
              console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
-             const yt = await Innertube.create();
              const searchResults = await yt.search(targetUrl, { type: 'video' });
              if (!searchResults.videos.length) {
                  throw new Error("No videos found on YouTube");
@@ -50,37 +97,36 @@ export async function POST(req: NextRequest) {
             }
             buffer = Buffer.concat(chunks);
         } else {
-            console.log(`[SHOMA] Extracting YouTube metadata via ytdl-core-enhanced for: ${targetUrl}`);
-            
-            // Use provided cookie or env variable
-            const cookieStr = youtubeCookie || process.env.YOUTUBE_COOKIE;
-            let agent;
-            if (cookieStr) {
-                const cookies = cookieStr.split(';').map((c: string) => {
-                    const [name, ...value] = c.split('=');
-                    return { name: name.trim(), value: value.join('=').trim() };
-                }).filter((c: any) => c.name && c.value);
-                agent = ytdl.createAgent(cookies);
-                console.log(`[SHOMA] Using authenticated agent`);
+            // Extract the video ID from the URL
+            let videoId = targetUrl;
+            if (targetUrl.includes('v=')) {
+                videoId = targetUrl.split('v=')[1].split('&')[0];
+            } else if (targetUrl.includes('youtu.be/')) {
+                videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
             }
 
-            const ytInfo = await ytdl.getInfo(targetUrl, { agent });
-            title = ytInfo.videoDetails.title || 'Unknown Title';
-            artist = ytInfo.videoDetails.author.name || 'Unknown Artist';
+            console.log(`[SHOMA] Extracting YouTube metadata via Innertube for ID: ${videoId}`);
+            const info = await yt.getBasicInfo(videoId, { client: 'ANDROID_VR' });
+            
+            title = info.basic_info.title || 'Unknown Title';
+            artist = info.basic_info.author || 'Unknown Artist';
             console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
-            console.log(`[SHOMA] Downloading best audio via ytdl-core-enhanced...`);
-            const stream = ytdl.downloadFromInfo(ytInfo, { 
-                quality: 'highestaudio',
-                agent
+            console.log(`[SHOMA] Downloading best audio via Innertube (ANDROID_VR client)...`);
+            const stream = await yt.download(videoId, { 
+                type: 'audio', 
+                quality: 'best', 
+                format: 'mp4',
+                client: 'ANDROID_VR' 
             });
             
-            const chunks: Buffer[] = await new Promise((resolve, reject) => {
-                const arr: Buffer[] = [];
-                stream.on('data', (c: Buffer) => arr.push(c));
-                stream.on('end', () => resolve(arr));
-                stream.on('error', (err: any) => reject(err));
-            });
+            const chunks: any[] = [];
+            const reader = stream.getReader();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+            }
             buffer = Buffer.concat(chunks);
         }
     } catch (error: any) {
