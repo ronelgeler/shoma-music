@@ -9,16 +9,14 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@ru-hend/ytdl-core": "^4.16.15",
     "@vercel/node": "^5.8.12",
-    "@ybd-project/ytdl-core": "^6.0.8",
     "axios": "^1.17.0",
     "cheerio": "1.2.0",
     "form-data": "^4.0.5",
+    "jsdom": "^29.1.1",
     "lucide-react": "^1.17.0",
     "next": "16.2.7",
     "node-id3": "^0.2.9",
-    "play-dl": "^1.9.7",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "soundcloud-downloader": "^1.0.0",

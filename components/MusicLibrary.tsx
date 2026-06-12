@@ -4,7 +4,7 @@ import { loginToIBroadcast, fetchLibrary, deleteTrack, createPlaylist, appendToP
 import { usePlayerStore, Track, Playlist } from '@/lib/store';
 import TrackList from './TrackList';
 import SearchBar from './SearchBar';
-import { Loader2, DownloadCloud, Search, Music, Home, ListMusic, Plus } from 'lucide-react';
+import { Loader2, DownloadCloud, Search, Music, Home, ListMusic, Plus, Settings, X } from 'lucide-react';
 
 export default function MusicLibrary() {
   const [email, setEmail] = useState('');
@@ -13,7 +13,7 @@ export default function MusicLibrary() {
   const [error, setError] = useState('');
   const [tracks, setTracks] = useState<Track[]>([]);
   const [search, setSearch] = useState('');
-  const { setAuth, token, userId, playlists, setPlaylists } = usePlayerStore();
+  const { setAuth, token, userId, playlists, setPlaylists, ytCredentials, setYtCredentials } = usePlayerStore();
   
   const [downloadQuery, setDownloadQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
@@ -22,6 +22,9 @@ export default function MusicLibrary() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [cookieInput, setCookieInput] = useState('');
 
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
@@ -43,6 +46,12 @@ export default function MusicLibrary() {
     }
     return () => clearInterval(interval);
   }, [isDownloading]);
+
+  useEffect(() => {
+    if (ytCredentials) {
+        setCookieInput(ytCredentials.cookie || '');
+    }
+  }, [ytCredentials]);
 
   const loadLibrary = async (currentToken: string, currentUserId: string) => {
     try {
@@ -203,7 +212,12 @@ export default function MusicLibrary() {
       const res = await fetch('/api/download', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: queryUrl, token, userId })
+        body: JSON.stringify({ 
+            query: queryUrl, 
+            token, 
+            userId,
+            youtubeCookie: ytCredentials?.cookie
+        })
       });
       const data = await res.json();
       if (res.ok && data.success) {
@@ -243,6 +257,11 @@ export default function MusicLibrary() {
       setIsDownloading(false);
       setDownloadMsg('Download failed.');
     }
+  };
+
+  const handleSaveCookie = () => {
+    setYtCredentials({ cookie: cookieInput });
+    setIsSettingsOpen(false);
   };
 
   const handleDeleteTrack = async (trackId: string) => {
@@ -448,28 +467,60 @@ export default function MusicLibrary() {
           </div>
           
           <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full xl:w-96 shadow-lg relative shrink-0">
-            <h3 className="text-sm font-semibold text-white mb-2 flex items-center gap-2">
-              <DownloadCloud size={16} className="text-neutral-400" /> Search & Add Song
-            </h3>
-            <form onSubmit={handleSearchSubmit} className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Type song name (e.g. 'hello')"
-                className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-white text-sm focus:outline-none focus:border-white"
-                value={downloadQuery}
-                onChange={e => setDownloadQuery(e.target.value)}
-                required
-              />
-              <button
-                type="submit"
-                disabled={isSearching || isDownloading}
-                className="bg-white text-black px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center disabled:opacity-70 min-w-[80px] hover:scale-105 transition-transform"
-              >
-                {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
-              </button>
-            </form>
+            <div className="flex justify-between items-center mb-2">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <DownloadCloud size={16} className="text-neutral-400" /> Search & Add Song
+                </h3>
+                <button 
+                    onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+                    className="text-neutral-500 hover:text-white transition"
+                    title="YouTube Settings"
+                >
+                    <Settings size={16} />
+                </button>
+            </div>
 
-            {searchResults.length > 0 && (
+            {isSettingsOpen ? (
+                <div className="space-y-3 bg-black/40 p-3 rounded-lg border border-neutral-800 mb-4 animate-in fade-in slide-in-from-top-1">
+                    <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">YouTube Auth (Optional)</span>
+                        <button onClick={() => setIsSettingsOpen(false)}><X size={14} /></button>
+                    </div>
+                    <p className="text-[10px] text-neutral-500 leading-tight">If downloads fail with "Login Required", paste your YouTube cookies here. Use "Get cookies.txt" extension on YouTube.</p>
+                    <textarea 
+                        className="w-full h-24 bg-neutral-800 border border-neutral-700 rounded p-2 text-[10px] text-white focus:outline-none focus:border-white"
+                        placeholder="Paste cookies.txt content here..."
+                        value={cookieInput}
+                        onChange={e => setCookieInput(e.target.value)}
+                    />
+                    <button 
+                        onClick={handleSaveCookie}
+                        className="w-full bg-white text-black text-xs font-bold py-2 rounded-full"
+                    >
+                        Save Cookies
+                    </button>
+                </div>
+            ) : (
+                <form onSubmit={handleSearchSubmit} className="flex gap-2">
+                <input
+                    type="text"
+                    placeholder="Type song name (e.g. 'hello')"
+                    className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-md text-white text-sm focus:outline-none focus:border-white"
+                    value={downloadQuery}
+                    onChange={e => setDownloadQuery(e.target.value)}
+                    required
+                />
+                <button
+                    type="submit"
+                    disabled={isSearching || isDownloading}
+                    className="bg-white text-black px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center disabled:opacity-70 min-w-[80px] hover:scale-105 transition-transform"
+                >
+                    {isSearching ? <Loader2 size={16} className="animate-spin" /> : <Search size={16} />}
+                </button>
+                </form>
+            )}
+
+            {searchResults.length > 0 && !isSettingsOpen && (
               <div className="absolute left-0 right-0 top-full mt-2 bg-neutral-900 border border-neutral-700 rounded-xl shadow-2xl z-50 overflow-hidden max-h-80 overflow-y-auto">
                 <div className="p-2 space-y-1">
                   {searchResults.map((res, i) => (

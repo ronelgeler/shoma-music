@@ -12,7 +12,7 @@ export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, token, userId } = await req.json();
+    const { query, token, userId, youtubeCookie } = await req.json();
 
     if (!query || !token || !userId) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
@@ -50,40 +50,41 @@ export async function POST(req: NextRequest) {
             }
             buffer = Buffer.concat(chunks);
         } else {
-            console.log(`[SHOMA] Extracting YouTube metadata via Innertube for: ${targetUrl}`);
-            const yt = await Innertube.create();
+            console.log(`[SHOMA] Extracting YouTube metadata via ytdl-core-enhanced for: ${targetUrl}`);
             
-            // Extract the video ID from the URL
-            let videoId = targetUrl;
-            if (targetUrl.includes('v=')) {
-                videoId = targetUrl.split('v=')[1].split('&')[0];
-            } else if (targetUrl.includes('youtu.be/')) {
-                videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
+            // Use provided cookie or env variable
+            const cookieStr = youtubeCookie || process.env.YOUTUBE_COOKIE;
+            let agent;
+            if (cookieStr) {
+                const cookies = cookieStr.split(';').map((c: string) => {
+                    const [name, ...value] = c.split('=');
+                    return { name: name.trim(), value: value.join('=').trim() };
+                }).filter((c: any) => c.name && c.value);
+                agent = ytdl.createAgent(cookies);
+                console.log(`[SHOMA] Using authenticated agent`);
             }
 
-            const info = await yt.getBasicInfo(videoId, { client: 'ANDROID_VR' });
-            title = info.basic_info.title || 'Unknown Title';
-            artist = info.basic_info.author || 'Unknown Artist';
+            const ytInfo = await ytdl.getInfo(targetUrl, { agent });
+            title = ytInfo.videoDetails.title || 'Unknown Title';
+            artist = ytInfo.videoDetails.author.name || 'Unknown Artist';
             console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
-            console.log(`[SHOMA] Downloading best audio via Innertube (ANDROID_VR client)...`);
-            const stream = await yt.download(videoId, { 
-                type: 'audio', 
-                quality: 'best', 
-                format: 'mp4',
-                client: 'ANDROID_VR' 
+            console.log(`[SHOMA] Downloading best audio via ytdl-core-enhanced...`);
+            const stream = ytdl.downloadFromInfo(ytInfo, { 
+                quality: 'highestaudio',
+                agent
             });
             
-            const chunks: any[] = [];
-            const reader = stream.getReader();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
-            }
+            const chunks: Buffer[] = await new Promise((resolve, reject) => {
+                const arr: Buffer[] = [];
+                stream.on('data', (c: Buffer) => arr.push(c));
+                stream.on('end', () => resolve(arr));
+                stream.on('error', (err: any) => reject(err));
+            });
             buffer = Buffer.concat(chunks);
         }
     } catch (error: any) {
+        console.error(`[SHOMA] YouTube/SC Error:`, error);
         throw new Error(`Failed to find or stream song: ${error.message}`);
     }
 
@@ -97,11 +98,8 @@ export async function POST(req: NextRequest) {
     if (!buffer) throw new Error("Could not obtain audio buffer");
     console.log(`[SHOMA] Buffered ${buffer.length} bytes`);
 
-    // Inject ID3 tags so iBroadcast reads the correct metadata
-    const tags = {
-      title: title,
-      artist: artist,
-    };
+    // Inject ID3 tags
+    const tags = { title, artist };
     buffer = NodeID3.write(tags, buffer) || buffer;
 
     // 3. Upload to iBroadcast
@@ -122,11 +120,10 @@ export async function POST(req: NextRequest) {
     formData.append('artist', artist);
     formData.append('file', buffer, { filename: cleanFilename, contentType: 'audio/mpeg' });
 
-    console.log(`[SHOMA] Uploading to iBroadcast via Axios (to upload.ibroadcast.com)...`);
+    console.log(`[SHOMA] Uploading to iBroadcast...`);
     
     let uploadResult;
     try {
-      // sync.ibroadcast.com was deprecated in May 2026. Switching to upload.ibroadcast.com
       const uploadResponse = await axios.post('https://upload.ibroadcast.com', formData, {
         headers: {
           ...formData.getHeaders(),
@@ -138,29 +135,8 @@ export async function POST(req: NextRequest) {
       uploadResult = uploadResponse.data;
     } catch (e: any) {
       console.error("[SHOMA] iBroadcast axios error:", e.response?.data || e.message);
-      // Try sync as fallback just in case
-      if (e.response?.status === 404 || e.response?.status === 403) {
-          console.log(`[SHOMA] ${e.response?.status} on upload.ibroadcast.com, trying sync.ibroadcast.com as fallback...`);
-          try {
-            const uploadResponse = await axios.post('https://sync.ibroadcast.com/', formData, {
-                headers: {
-                  ...formData.getHeaders(),
-                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
-                },
-                maxBodyLength: Infinity,
-                maxContentLength: Infinity
-              });
-              uploadResult = uploadResponse.data;
-          } catch (e2: any) {
-            console.error("[SHOMA] iBroadcast fallback axios error:", e2.response?.data || e2.message);
-            throw new Error(`iBroadcast API error (Status: ${e2.response?.status || 500}). ${e2.response?.data?.message || ''}`);
-          }
-      } else {
-        throw new Error(`iBroadcast API error (Status: ${e.response?.status || 500}). ${e.response?.data?.message || ''}`);
-      }
+      throw new Error(`iBroadcast API error (Status: ${e.response?.status || 500})`);
     }
-
-    console.log("[SHOMA] iBroadcast response:", uploadResult);
 
     if (uploadResult.result === false) {
       throw new Error(uploadResult.message || 'iBroadcast rejected upload');
