@@ -3,8 +3,10 @@ import axios from 'axios';
 import FormData from 'form-data';
 import crypto from 'crypto';
 import NodeID3 from 'node-id3';
-import youtubedl from 'youtube-dl-exec';
-import play from 'play-dl';
+// @ts-ignore
+import ytdl from 'ytdl-core-enhanced';
+import { Innertube } from 'youtubei.js';
+import scdl from 'soundcloud-downloader';
 
 export const maxDuration = 60;
 
@@ -24,42 +26,47 @@ export async function POST(req: NextRequest) {
     let targetUrl = query;
 
     try {
-        if (!targetUrl.includes('youtube.com') && !targetUrl.includes('youtu.be') && !targetUrl.includes('soundcloud.com')) {
+        if (!targetUrl.includes('http')) {
              console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
-             const searchResults = await play.search(targetUrl, { limit: 1 });
-             if (!searchResults || !searchResults.length) {
+             const yt = await Innertube.create();
+             const searchResults = await yt.search(targetUrl, { type: 'video' });
+             if (!searchResults.videos.length) {
                  throw new Error("No videos found on YouTube");
              }
-             targetUrl = searchResults[0].url;
+             targetUrl = `https://www.youtube.com/watch?v=${(searchResults.videos[0] as any).id}`;
         }
 
-        console.log(`[SHOMA] Extracting metadata for: ${targetUrl}`);
-        const ytInfo: any = await youtubedl(targetUrl, {
-            dumpJson: true,
-            noWarnings: true,
-            callHome: false,
-            noCheckCertificates: true,
-            youtubeSkipDashManifest: true
-        } as any);
+        if (targetUrl.includes('soundcloud.com')) {
+            console.log(`[SHOMA] Extracting SoundCloud metadata for: ${targetUrl}`);
+            const scInfo = await scdl.getInfo(targetUrl);
+            title = scInfo.title || 'Unknown Title';
+            artist = scInfo.user?.username || 'Unknown Artist';
+            
+            console.log(`[SHOMA] Downloading SoundCloud audio...`);
+            const stream = await scdl.download(targetUrl);
+            const chunks: any[] = [];
+            for await (const chunk of stream) {
+                chunks.push(chunk);
+            }
+            buffer = Buffer.concat(chunks);
+        } else {
+            console.log(`[SHOMA] Extracting YouTube metadata for: ${targetUrl}`);
+            const ytInfo = await ytdl.getInfo(targetUrl);
+            title = ytInfo.videoDetails.title || 'Unknown Title';
+            artist = ytInfo.videoDetails.author.name || 'Unknown Artist';
+            console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
-        title = ytInfo.title || 'Unknown Title';
-        artist = ytInfo.uploader || ytInfo.channel || 'Unknown Artist';
-        console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
-
-        console.log(`[SHOMA] Downloading best audio via yt-dlp...`);
-        const subprocess = youtubedl.exec(targetUrl, {
-            format: 'bestaudio',
-            output: '-',
-            noWarnings: true,
-            callHome: false,
-            noCheckCertificates: true
-        } as any);
-
-        const chunks: any[] = [];
-        for await (const chunk of subprocess.stdout) {
-            chunks.push(chunk);
+            console.log(`[SHOMA] Downloading best audio via ytdl-core-enhanced...`);
+            const stream = ytdl.downloadFromInfo(ytInfo, { quality: 'highestaudio' });
+            
+            const chunks: Buffer[] = await new Promise((resolve, reject) => {
+                const arr: Buffer[] = [];
+                stream.on('data', c => arr.push(c));
+                stream.on('end', () => resolve(arr));
+                stream.on('error', err => reject(err));
+            });
+            buffer = Buffer.concat(chunks);
         }
-        buffer = Buffer.concat(chunks);
     } catch (error: any) {
         throw new Error(`Failed to find or stream song: ${error.message}`);
     }
@@ -149,4 +156,3 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
-
