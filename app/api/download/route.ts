@@ -50,33 +50,37 @@ export async function POST(req: NextRequest) {
             }
             buffer = Buffer.concat(chunks);
         } else {
-            console.log(`[SHOMA] Extracting YouTube metadata for: ${targetUrl}`);
+            console.log(`[SHOMA] Extracting YouTube metadata via Innertube for: ${targetUrl}`);
+            const yt = await Innertube.create();
             
-            // Add Agent to bypass bot protections using YOUTUBE_COOKIE env variable
-            let agent;
-            if (process.env.YOUTUBE_COOKIE) {
-                const cookies = process.env.YOUTUBE_COOKIE.split(';').map(c => {
-                    const [name, ...value] = c.split('=');
-                    return { name: name.trim(), value: value.join('=').trim() };
-                }).filter(c => c.name && c.value);
-                agent = ytdl.createAgent(cookies);
-                console.log(`[SHOMA] Using authenticated YouTube agent (Cookies provided)`);
+            // Extract the video ID from the URL
+            let videoId = targetUrl;
+            if (targetUrl.includes('v=')) {
+                videoId = targetUrl.split('v=')[1].split('&')[0];
+            } else if (targetUrl.includes('youtu.be/')) {
+                videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
             }
 
-            const ytInfo = await ytdl.getInfo(targetUrl, { agent });
-            title = ytInfo.videoDetails.title || 'Unknown Title';
-            artist = ytInfo.videoDetails.author.name || 'Unknown Artist';
+            const info = await yt.getBasicInfo(videoId, { client: 'ANDROID_VR' });
+            title = info.basic_info.title || 'Unknown Title';
+            artist = info.basic_info.author || 'Unknown Artist';
             console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
-            console.log(`[SHOMA] Downloading best audio via ytdl-core-enhanced...`);
-            const stream = ytdl.downloadFromInfo(ytInfo, { quality: 'highestaudio', agent });
-            
-            const chunks: Buffer[] = await new Promise((resolve, reject) => {
-                const arr: Buffer[] = [];
-                stream.on('data', c => arr.push(c));
-                stream.on('end', () => resolve(arr));
-                stream.on('error', err => reject(err));
+            console.log(`[SHOMA] Downloading best audio via Innertube (ANDROID_VR client)...`);
+            const stream = await yt.download(videoId, { 
+                type: 'audio', 
+                quality: 'best', 
+                format: 'mp4',
+                client: 'ANDROID_VR' 
             });
+            
+            const chunks: any[] = [];
+            const reader = stream.getReader();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                chunks.push(value);
+            }
             buffer = Buffer.concat(chunks);
         }
     } catch (error: any) {
