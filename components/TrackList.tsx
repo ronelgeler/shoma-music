@@ -133,6 +133,7 @@ export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreateP
           );
         })}
       </div>
+      </div>
     </div>
   );
 }
