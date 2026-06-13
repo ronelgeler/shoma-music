@@ -2,17 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
-const STABLE_PIPES = [
-    "https://redirect.invidious.io",
+const INVIDIOUS_INSTANCES = [
+    "https://inv.tux.pizza",
+    "https://invidious.no-logs.com",
+    "https://invidious.io.lol",
+    "https://iv.ggtyler.dev",
+    "https://invidious.namazso.eu",
+    "https://invidious.projectsegfau.lt",
+    "https://inv.vern.cc",
+    "https://yewtu.be",
+    "https://invidious.lunar.icu"
+];
+
+const PIPED_INSTANCES = [
     "https://pipedapi.kavin.rocks",
     "https://api.piped.victr.me",
     "https://piped-api.garudalinux.org",
-    "https://yewtu.be",
-    "https://invidious.projectsegfau.lt",
-    "https://inv.vern.cc"
+    "https://pipedapi.aeong.one",
+    "https://pipedapi.rivm.me"
 ];
 
-async function validateLink(url: string) {
+async function checkUrl(url: string) {
     try {
         const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
         return res.ok;
@@ -25,62 +35,74 @@ export async function GET(req: NextRequest) {
 
     if (!videoId) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
+    console.log(`[SHOMA] Hunter-Seeker request: ${videoId}`);
+
+    // 1. Parallel Hunt for working Links
     const links: { url: string, source: string }[] = [];
-    console.log(`[SHOMA] Validated Mirror request: ${videoId}`);
 
-    // Parallel discovery and validation
-    const discoveryPromises = STABLE_PIPES.map(async (instance) => {
+    // Strategy A: Scrape specialized MP3 proxies
+    const scrapeSpecial = async () => {
         try {
-            const isPiped = instance.includes('piped');
-            const endpoint = isPiped ? `${instance}/streams/${videoId}` : `${instance}/api/v1/videos/${videoId}`;
-            
-            const res = await fetch(endpoint, { signal: AbortSignal.timeout(4000) });
-            if (!res.ok) return null;
-            const data = await res.json();
-            
-            let candidateUrl = '';
-            let sourceName = '';
+            const res = await fetch(`https://api.vevioz.com/api/button/mp3/${videoId}`, { signal: AbortSignal.timeout(4000) });
+            const text = await res.text();
+            const match = text.match(/href="(https:\/\/.*?\.mp3.*?)"/);
+            if (match?.[1]) return { url: match[1], source: 'Direct MP3 Proxy' };
+        } catch (e) {}
+        return null;
+    };
 
-            if (isPiped) {
-                candidateUrl = data.audioStreams?.find((s: any) => s.format === 'M4A')?.url || data.audioStreams?.[0]?.url;
-                sourceName = 'Piped Mirror';
-            } else {
+    // Strategy B: Invidious Parallel Discovery
+    const huntInvidious = async () => {
+        const promises = INVIDIOUS_INSTANCES.slice(0, 8).map(async (base) => {
+            try {
+                const res = await fetch(`${base}/api/v1/videos/${videoId}`, { signal: AbortSignal.timeout(3500) });
+                if (!res.ok) return null;
+                const data = await res.json();
                 const format = data.adaptiveFormats?.find((f: any) => f.type.startsWith('audio/'));
                 if (format?.url) {
-                    candidateUrl = format.url.startsWith('http') ? format.url : `${instance}${format.url}`;
-                    sourceName = 'Invidious Mirror';
+                    const url = format.url.startsWith('http') ? format.url : `${base}${format.url}`;
+                    if (await checkUrl(url)) return { url, source: `Invidious (${new URL(base).hostname})` };
                 }
-            }
+            } catch (e) {}
+            return null;
+        });
+        const results = await Promise.all(promises);
+        return results.filter(Boolean);
+    };
 
-            if (candidateUrl && await validateLink(candidateUrl)) {
-                return { url: candidateUrl, source: sourceName };
-            }
-        } catch (e) {}
-        return null;
-    });
+    // Strategy C: Piped Parallel Discovery
+    const huntPiped = async () => {
+        const promises = PIPED_INSTANCES.map(async (base) => {
+            try {
+                const res = await fetch(`${base}/streams/${videoId}`, { signal: AbortSignal.timeout(3500) });
+                if (!res.ok) return null;
+                const data = await res.json();
+                const stream = data.audioStreams?.find((s: any) => s.format === 'M4A') || data.audioStreams?.[0];
+                if (stream?.url) {
+                    if (await checkUrl(stream.url)) return { url: stream.url, source: `Piped (${new URL(base).hostname})` };
+                }
+            } catch (e) {}
+            return null;
+        });
+        const results = await Promise.all(promises);
+        return results.filter(Boolean);
+    };
 
-    // Also try specialized APIs
-    const cobaltPromise = (async () => {
-        try {
-            const res = await fetch("https://api.cobalt.tools/api/json", {
-                method: "POST",
-                headers: { "Accept": "application/json", "Content-Type": "application/json" },
-                body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" }),
-                signal: AbortSignal.timeout(5000)
-            });
-            const data = await res.json();
-            if (data.url && await validateLink(data.url)) return { url: data.url, source: 'Cobalt Mirror' };
-        } catch (e) {}
-        return null;
-    })();
-
-    const results = await Promise.all([...discoveryPromises, cobaltPromise]);
-    const validLinks = results.filter((l): l is { url: string, source: string } => !!l);
-    links.push(...validLinks);
+    // Execute Hunt
+    const [special, invs, piped] = await Promise.all([scrapeSpecial(), huntInvidious(), huntPiped()]);
+    
+    if (special) links.push(special as any);
+    links.push(...(invs as any[]));
+    links.push(...(piped as any[]));
 
     if (links.length === 0) {
-        // Ultimate Fallback: Direct MP3 Extraction API (No validation needed, it's a redirect anyway)
-        links.push({ url: `https://api.vevioz.com/api/button/mp3/${videoId}`, source: 'Emergency Proxy' });
+        // Last-second emergency redirect (No validation, just hope)
+        return NextResponse.json({ 
+            links: [
+                { url: `https://api.vevioz.com/api/button/mp3/${videoId}`, source: 'Emergency Proxy' },
+                { url: `https://yt-api.cc/api/download/mp3/${videoId}`, source: 'Backup Proxy' }
+            ]
+        });
     }
 
     return NextResponse.json({ links });
