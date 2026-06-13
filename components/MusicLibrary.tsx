@@ -415,6 +415,13 @@ export default function MusicLibrary() {
     }
   };
 
+  const handleHardReset = () => {
+    if (confirm('DANGER: This will clear EVERYTHING (Login, Settings, Queue) and refresh the page. Continue?')) {
+        localStorage.clear();
+        window.location.reload();
+    }
+  };
+
   const handleDeleteTrack = async (trackId: string) => {
     if (!token || !userId) return;
     if (!confirm('Are you sure you want to delete this track?')) return;
@@ -706,6 +713,15 @@ export default function MusicLibrary() {
                     >
                         Save Manual Changes
                     </button>
+
+                    <div className="pt-4 mt-4 border-t border-neutral-800">
+                        <button 
+                            onClick={handleHardReset}
+                            className="w-full bg-neutral-900 text-red-500 border border-red-900/30 text-[10px] font-bold py-2 rounded uppercase tracking-widest hover:bg-red-950/20 transition"
+                        >
+                            Hard Reset Everything
+                        </button>
+                    </div>
                 </div>
             ) : (
                 <form onSubmit={handleSearchSubmit} className="flex gap-2">
