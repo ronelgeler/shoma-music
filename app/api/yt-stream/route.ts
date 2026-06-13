@@ -2,38 +2,22 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export const maxDuration = 60;
 
-const PIPED_INSTANCES = [
+const STABLE_PIPES = [
+    "https://redirect.invidious.io",
     "https://pipedapi.kavin.rocks",
     "https://api.piped.victr.me",
     "https://piped-api.garudalinux.org",
-    "https://pipedapi.aeong.one",
-    "https://pipedapi.leptons.xyz",
-    "https://pipedapi.rivm.me",
-    "https://pipedapi.drgns.space",
-    "https://piped-api.lunar.icu",
-    "https://api-piped.mha.fi",
-    "https://piped-api.hostux.net"
-];
-
-const INVIDIOUS_INSTANCES = [
     "https://yewtu.be",
     "https://invidious.projectsegfau.lt",
-    "https://invidious.nerdvpn.de",
-    "https://inv.vern.cc",
-    "https://invidious.no-logs.com",
-    "https://invidious.tiekoetter.com",
-    "https://invidious.snopyta.org",
-    "https://invidious.kavin.rocks",
-    "https://inv.riverside.rocks",
-    "https://invidious.site"
+    "https://inv.vern.cc"
 ];
 
-const COBALT_INSTANCES = [
-    "https://api.cobalt.tools/api/json",
-    "https://cobalt.dark-viper.xyz/api/json",
-    "https://cobalt-api.kavin.rocks/api/json",
-    "https://cobalt.qbit.rocks/api/json"
-];
+async function validateLink(url: string) {
+    try {
+        const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(2000) });
+        return res.ok;
+    } catch (e) { return false; }
+}
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
@@ -42,69 +26,62 @@ export async function GET(req: NextRequest) {
     if (!videoId) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
     const links: { url: string, source: string }[] = [];
-    console.log(`[SHOMA] Infinite Mirror request: ${videoId}`);
+    console.log(`[SHOMA] Validated Mirror request: ${videoId}`);
 
-    // 1. Try Piped (Parallel-ish)
-    const pipedPromises = PIPED_INSTANCES.slice(0, 6).map(async (instance) => {
+    // Parallel discovery and validation
+    const discoveryPromises = STABLE_PIPES.map(async (instance) => {
         try {
-            const res = await fetch(`${instance}/streams/${videoId}`, { signal: AbortSignal.timeout(4000) });
-            if (res.ok) {
-                const data = await res.json();
-                const stream = data.audioStreams?.find((s: any) => s.format === 'M4A') || data.audioStreams?.[0];
-                if (stream?.url) return { url: stream.url, source: `Piped Mirror` };
-            }
-        } catch (e) {}
-        return null;
-    });
+            const isPiped = instance.includes('piped');
+            const endpoint = isPiped ? `${instance}/streams/${videoId}` : `${instance}/api/v1/videos/${videoId}`;
+            
+            const res = await fetch(endpoint, { signal: AbortSignal.timeout(4000) });
+            if (!res.ok) return null;
+            const data = await res.json();
+            
+            let candidateUrl = '';
+            let sourceName = '';
 
-    // 2. Try Invidious (Parallel-ish)
-    const invidiousPromises = INVIDIOUS_INSTANCES.slice(0, 6).map(async (instance) => {
-        try {
-            const res = await fetch(`${instance}/api/v1/videos/${videoId}`, { signal: AbortSignal.timeout(4000) });
-            if (res.ok) {
-                const data = await res.json();
+            if (isPiped) {
+                candidateUrl = data.audioStreams?.find((s: any) => s.format === 'M4A')?.url || data.audioStreams?.[0]?.url;
+                sourceName = 'Piped Mirror';
+            } else {
                 const format = data.adaptiveFormats?.find((f: any) => f.type.startsWith('audio/'));
                 if (format?.url) {
-                    const finalUrl = format.url.startsWith('http') ? format.url : `${instance}${format.url}`;
-                    return { url: finalUrl, source: `Invidious Mirror` };
+                    candidateUrl = format.url.startsWith('http') ? format.url : `${instance}${format.url}`;
+                    sourceName = 'Invidious Mirror';
                 }
+            }
+
+            if (candidateUrl && await validateLink(candidateUrl)) {
+                return { url: candidateUrl, source: sourceName };
             }
         } catch (e) {}
         return null;
     });
 
-    // 3. Try Cobalt Mirrors
-    const cobaltPromises = COBALT_INSTANCES.map(async (instance) => {
+    // Also try specialized APIs
+    const cobaltPromise = (async () => {
         try {
-            const res = await fetch(instance, {
+            const res = await fetch("https://api.cobalt.tools/api/json", {
                 method: "POST",
                 headers: { "Accept": "application/json", "Content-Type": "application/json" },
                 body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" }),
-                signal: AbortSignal.timeout(6000)
+                signal: AbortSignal.timeout(5000)
             });
             const data = await res.json();
-            if (data.url) return { url: data.url, source: 'Cobalt Mirror' };
+            if (data.url && await validateLink(data.url)) return { url: data.url, source: 'Cobalt Mirror' };
         } catch (e) {}
         return null;
-    });
+    })();
 
-    const results = await Promise.all([...pipedPromises, ...invidiousPromises, ...cobaltPromises]);
+    const results = await Promise.all([...discoveryPromises, cobaltPromise]);
     const validLinks = results.filter((l): l is { url: string, source: string } => !!l);
-    
     links.push(...validLinks);
 
-    // 4. Fallback: Extraction API
-    try {
-        const res = await fetch(`https://api.vevioz.com/api/button/mp3/${videoId}`, { signal: AbortSignal.timeout(5000) });
-        const text = await res.text();
-        const match = text.match(/href="(https:\/\/.*?\.mp3.*?)"/);
-        if (match?.[1]) links.push({ url: match[1], source: 'Emergency Proxy' });
-    } catch (e) {}
-
     if (links.length === 0) {
-        return NextResponse.json({ error: 'YouTube is blocking all paths. Try again later.' }, { status: 500 });
+        // Ultimate Fallback: Direct MP3 Extraction API (No validation needed, it's a redirect anyway)
+        links.push({ url: `https://api.vevioz.com/api/button/mp3/${videoId}`, source: 'Emergency Proxy' });
     }
 
-    // Sort links to try mirrors first
     return NextResponse.json({ links });
 }

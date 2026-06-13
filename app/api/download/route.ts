@@ -5,7 +5,6 @@ import crypto from 'crypto';
 import NodeID3 from 'node-id3';
 import { Innertube } from 'youtubei.js';
 import scdl from 'soundcloud-downloader';
-import { Readable } from 'stream';
 
 // @ts-ignore
 import ytdl from 'ytdl-core-enhanced';
@@ -51,6 +50,12 @@ async function streamToBuffer(stream: any): Promise<Buffer> {
         stream.on('error', reject);
     });
 }
+
+const PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://api.piped.victr.me",
+    "https://piped-api.garudalinux.org"
+];
 
 export async function POST(req: NextRequest) {
   try {
@@ -123,25 +128,28 @@ export async function POST(req: NextRequest) {
 
         if (!buffer) {
             console.log('[SHOMA] Trying Cobalt buffer fetch...');
-            try {
-                const cobaltRes = await fetch("https://api.cobalt.tools/api/json", {
-                    method: "POST",
-                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
-                    body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" })
-                });
-                const cobaltData = await cobaltRes.json();
-                if (cobaltData.url) {
-                    const audioRes = await fetch(cobaltData.url);
-                    buffer = Buffer.from(await audioRes.arrayBuffer());
-                    console.log('[SHOMA] Cobalt SUCCESS');
-                }
-            } catch (e) {}
+            const cobaltInstances = ["https://api.cobalt.tools/api/json", "https://cobalt.dark-viper.xyz/api/json"];
+            for (const instance of cobaltInstances) {
+                try {
+                    const cobaltRes = await fetch(instance, {
+                        method: "POST",
+                        headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                        body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" })
+                    });
+                    const cobaltData = await cobaltRes.json();
+                    if (cobaltData.url) {
+                        const audioRes = await fetch(cobaltData.url);
+                        buffer = Buffer.from(await audioRes.arrayBuffer());
+                        console.log(`[SHOMA] Cobalt SUCCESS (${instance})`);
+                        break;
+                    }
+                } catch (e) {}
+            }
         }
 
         if (!buffer) {
             console.log('[SHOMA] Trying Piped buffer fetch...');
-            const instances = ["https://pipedapi.kavin.rocks", "https://api.piped.victr.me"];
-            for (const instance of instances) {
+            for (const instance of PIPED_INSTANCES) {
                 try {
                     const res = await fetch(`${instance}/streams/${videoId}`);
                     const data = await res.json();
@@ -162,7 +170,7 @@ export async function POST(req: NextRequest) {
                 const stream = ytdl(videoId, { filter: 'audioonly', quality: 'highestaudio' });
                 buffer = await streamToBuffer(stream);
             } catch (e) {
-                throw new Error(`All download methods failed: ${lastError}`);
+                throw new Error(`All download methods failed. YouTube is blocking. Last error: ${lastError}`);
             }
         }
     }
