@@ -3,20 +3,27 @@ import { Innertube, UniversalCache } from 'youtubei.js';
 
 export const maxDuration = 60;
 
-let ytInstance: Innertube | null = null;
-async function getYt() {
-    if (!ytInstance) {
-        ytInstance = await Innertube.create({
-            cache: new UniversalCache(false),
-            generate_session_locally: true
-        });
+function parseCookies(str: string) {
+    if (!str) return '';
+    if (str.includes('\t') || str.includes('# Netscape')) {
+        return str.split('\n')
+            .map(line => line.trim())
+            .filter(line => line && !line.startsWith('#'))
+            .map(line => {
+                const parts = line.split('\t');
+                if (parts.length >= 7) return `${parts[5]}=${parts[6]}`;
+                return null;
+            })
+            .filter(Boolean).join('; ');
     }
-    return ytInstance;
+    return str;
 }
 
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const videoId = searchParams.get('id');
+    const cookie = searchParams.get('c');
+    const poToken = searchParams.get('po');
 
     if (!videoId) {
         return NextResponse.json({ error: 'Missing video ID' }, { status: 400 });
@@ -24,28 +31,24 @@ export async function GET(req: NextRequest) {
 
     try {
         console.log(`[SHOMA] Stream request for: ${videoId}`);
-        const yt = await getYt();
         
-        // Use 'TV' or 'ANDROID_VR' as they often have fewer restrictions for direct streaming
+        const yt = await Innertube.create({
+            cache: new UniversalCache(false),
+            generate_session_locally: true,
+            cookie: parseCookies(cookie || '') || undefined,
+            po_token: poToken || undefined
+        });
+        
         const clients: any[] = ['TV', 'ANDROID_VR', 'MWEB', 'YTMUSIC_ANDROID'];
         let lastError = '';
 
         for (const clientType of clients) {
             try {
-                console.log(`[SHOMA] Attempting stream with client: ${clientType}`);
+                console.log(`[SHOMA] Stream attempt (${clientType}) for ${videoId}`);
                 const info = await yt.getInfo(videoId, clientType);
-                
-                // Specifically choose an audio-only format that is likely to be stable
-                const format = info.chooseFormat({ 
-                    type: 'audio', 
-                    quality: 'best',
-                    format: 'mp4' 
-                });
+                const format = info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' });
 
-                if (!format) {
-                    console.warn(`[SHOMA] No audio format for ${clientType}`);
-                    continue;
-                }
+                if (!format) continue;
 
                 const stream = await info.download({
                     type: 'audio',
@@ -54,7 +57,7 @@ export async function GET(req: NextRequest) {
                     client: clientType
                 });
 
-                console.log(`[SHOMA] Stream starting for ${videoId} via ${clientType}`);
+                console.log(`[SHOMA] Stream SUCCESS (${clientType})`);
 
                 return new Response(stream as any, {
                     headers: {
@@ -65,15 +68,14 @@ export async function GET(req: NextRequest) {
                     },
                 });
             } catch (e: any) {
-                console.error(`[SHOMA] Client ${clientType} error:`, e.message);
+                console.warn(`[SHOMA] Client ${clientType} failed:`, e.message);
                 lastError = e.message;
             }
         }
 
-        throw new Error(`Stream failed. Last error: ${lastError}`);
+        throw new Error(`All streaming attempts failed. Last error: ${lastError}`);
     } catch (error: any) {
-        console.error('[SHOMA] Stream API Global Error:', error.message);
-        ytInstance = null; // Force recreation on next hit
+        console.error('[SHOMA] Stream Global Error:', error.message);
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }

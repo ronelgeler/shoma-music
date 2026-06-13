@@ -13,7 +13,7 @@ const formatTime = (val: number | string | undefined) => {
 };
 
 export default function Player() {
-  const { currentTrack, isPlaying, setIsPlaying, playNext, playPrevious, toggleShuffle, isShuffle, token, userId } = usePlayerStore();
+  const { currentTrack, isPlaying, setIsPlaying, playNext, playPrevious, toggleShuffle, isShuffle, token, userId, ytCredentials } = usePlayerStore();
   const audioRef = useRef<HTMLAudioElement>(null);
   
   const [currentTime, setCurrentTime] = useState(0);
@@ -71,7 +71,7 @@ export default function Player() {
 
   if (!currentTrack || !token || !userId) return null;
 
-  const streamUrl = getStreamUrl(currentTrack, token, userId);
+  const streamUrl = getStreamUrl(currentTrack, token, userId, ytCredentials);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 pb-6 md:pb-4 text-white z-50">

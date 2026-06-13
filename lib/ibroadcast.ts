@@ -111,9 +111,12 @@ export async function appendToPlaylist(playlistId: string, trackIds: string[], t
 
 import { Track } from './store';
 
-export function getStreamUrl(track: Track, token: string, userId: string) {
+export function getStreamUrl(track: Track, token: string, userId: string, ytCredentials?: any) {
   if (track.source === 'youtube' && track.ytId) {
-    return `/api/yt-stream?id=${track.ytId}`;
+    let url = `/api/yt-stream?id=${track.ytId}`;
+    if (ytCredentials?.cookie) url += `&c=${encodeURIComponent(ytCredentials.cookie)}`;
+    if (ytCredentials?.poToken) url += `&po=${encodeURIComponent(ytCredentials.poToken)}`;
+    return url;
   }
   
   const trackId = track.file_id || track.uid;
