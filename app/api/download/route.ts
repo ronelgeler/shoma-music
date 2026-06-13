@@ -106,18 +106,18 @@ export async function POST(req: NextRequest) {
             }
 
             console.log(`[SHOMA] Extracting YouTube metadata via Innertube for ID: ${videoId}`);
-            const info = await yt.getInfo(videoId, { client: 'ANDROID_MUSIC' });
+            const info = await yt.getInfo(videoId, { client: 'YTMUSIC_ANDROID' });
 
             title = info.basic_info.title || 'Unknown Title';
             artist = info.basic_info.author || 'Unknown Artist';
             console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
-            console.log(`[SHOMA] Downloading best audio via Innertube (ANDROID_MUSIC client)...`);
+            console.log(`[SHOMA] Downloading best audio via Innertube (YTMUSIC_ANDROID client)...`);
             const stream = await info.download({
                 type: 'audio',
                 quality: 'best',
                 format: 'mp4',
-                client: 'ANDROID_MUSIC'
+                client: 'YTMUSIC_ANDROID'
             });
             
             const chunks: any[] = [];
