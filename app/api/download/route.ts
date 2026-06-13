@@ -71,8 +71,7 @@ export async function POST(req: NextRequest) {
 
         const yt = await Innertube.create({ 
             cookie: finalCookieHeader || undefined,
-            generate_session_locally: true,
-            client_type: 'ANDROID'
+            generate_session_locally: true
         });
 
         if (!targetUrl.includes('http')) {
@@ -107,17 +106,18 @@ export async function POST(req: NextRequest) {
             }
 
             console.log(`[SHOMA] Extracting YouTube metadata via Innertube for ID: ${videoId}`);
-            const info = await yt.getInfo(videoId);
+            const info = await yt.getInfo(videoId, { client: 'ANDROID' });
 
             title = info.basic_info.title || 'Unknown Title';
             artist = info.basic_info.author || 'Unknown Artist';
             console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
-            console.log(`[SHOMA] Downloading best audio via Innertube...`);
+            console.log(`[SHOMA] Downloading best audio via Innertube (ANDROID client)...`);
             const stream = await info.download({
                 type: 'audio',
                 quality: 'best',
-                format: 'mp4'
+                format: 'mp4',
+                client: 'ANDROID'
             });
             
             const chunks: any[] = [];
