@@ -112,7 +112,11 @@ export default function Player() {
                 {currentTrack.artist}
                 {playStatus === 'loading' && <span className="text-blue-400 animate-pulse text-[10px] font-bold uppercase tracking-wider">• Connecting...</span>}
                 {playStatus === 'playing' && <span className="text-green-500 text-[10px] font-bold uppercase tracking-wider">• Live Stream</span>}
-                {playStatus === 'error' && <span className="text-red-500 text-[10px] font-bold uppercase tracking-wider" title={lastError}>• Error: Try Settings</span>}
+                {playStatus === 'error' && (
+                    <span className="text-red-500 text-[10px] font-bold uppercase tracking-wider" title={lastError}>
+                        • Error: {lastError.length > 20 ? 'Failed to stream' : lastError}
+                    </span>
+                )}
               </div>
             </div>
           </div>

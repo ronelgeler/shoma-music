@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Innertube, UniversalCache } from 'youtubei.js';
 
-// @ts-ignore
-import ytdl from 'ytdl-core-enhanced';
-
 export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
@@ -17,50 +14,69 @@ export async function GET(req: NextRequest) {
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
     try {
-        console.log(`[SHOMA] Super-Redirect request: ${videoId}`);
+        console.log(`[SHOMA] Super-Pipe request: ${videoId}`);
 
-        // 1. Priority: Cobalt API (Direct Browser-Friendly URL)
-        const cobaltInstances = [
-            "https://api.cobalt.tools/api/json",
-            "https://cobalt.dark-viper.xyz/api/json",
-            "https://cobalt-api.kavin.rocks/api/json"
+        // 1. Try Piped API (Very stable direct stream extraction)
+        const pipedInstances = [
+            "https://pipedapi.kavin.rocks",
+            "https://piped-api.garudalinux.org",
+            "https://api.piped.victr.me"
         ];
 
-        for (const instance of cobaltInstances) {
+        for (const instance of pipedInstances) {
             try {
-                console.log(`[SHOMA] Trying Cobalt Redirect: ${instance}`);
-                const res = await fetch(instance, {
-                    method: "POST",
-                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
-                    body: JSON.stringify({ url: videoUrl, isAudioOnly: true, aFormat: "mp3" })
-                });
+                console.log(`[SHOMA] Trying Piped: ${instance}`);
+                const res = await fetch(`${instance}/streams/${videoId}`);
                 const data = await res.json();
-                if (data.url) {
-                    console.log(`[SHOMA] Cobalt Redirect SUCCESS`);
-                    return NextResponse.redirect(data.url);
+                
+                // Piped returns multiple audio streams, find the best one
+                const audioStream = data.audioStreams?.find((s: any) => s.format === 'M4A' || s.format === 'WEBM_OPUS') || data.audioStreams?.[0];
+                
+                if (audioStream?.url) {
+                    console.log(`[SHOMA] Piped Redirect SUCCESS`);
+                    return NextResponse.redirect(audioStream.url, 307);
                 }
-            } catch (e) { console.warn(`[SHOMA] Cobalt ${instance} failed`); }
+            } catch (e) { console.warn(`[SHOMA] Piped instance ${instance} failed`); }
         }
 
-        // 2. Secondary: Invidious Direct Audio URL
-        const invidiousInstances = ['https://yewtu.be', 'https://invidious.snopyta.org', 'https://vid.puffyan.us'];
+        // 2. Try Invidious API
+        const invidiousInstances = [
+            "https://invidious.projectsegfau.lt",
+            "https://yewtu.be",
+            "https://invidious.nerdvpn.de"
+        ];
+
         for (const instance of invidiousInstances) {
             try {
-                console.log(`[SHOMA] Trying Invidious Redirect: ${instance}`);
-                const streamUrl = `${instance}/latest/api/v1/videos/${videoId}`;
-                const invRes = await fetch(streamUrl);
-                const invData = await invRes.json();
-                const audioFormat = invData.adaptiveFormats?.find((f: any) => f.type.startsWith('audio/'));
+                console.log(`[SHOMA] Trying Invidious: ${instance}`);
+                const res = await fetch(`${instance}/api/v1/videos/${videoId}`);
+                const data = await res.json();
+                
+                const audioFormat = data.adaptiveFormats?.find((f: any) => f.type.startsWith('audio/'));
                 if (audioFormat?.url) {
                     console.log(`[SHOMA] Invidious Redirect SUCCESS`);
                     const finalUrl = audioFormat.url.startsWith('http') ? audioFormat.url : `${instance}${audioFormat.url}`;
-                    return NextResponse.redirect(finalUrl);
+                    return NextResponse.redirect(finalUrl, 307);
                 }
-            } catch (e) {}
+            } catch (e) { console.warn(`[SHOMA] Invidious ${instance} failed`); }
         }
 
-        // 3. Last Resort: Proxy through Innertube
-        console.warn(`[SHOMA] All redirects failed, trying local proxy...`);
+        // 3. Fallback: Cobalt API
+        try {
+            console.log(`[SHOMA] Trying Cobalt...`);
+            const res = await fetch("https://api.cobalt.tools/api/json", {
+                method: "POST",
+                headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                body: JSON.stringify({ url: videoUrl, isAudioOnly: true, aFormat: "mp3" })
+            });
+            const data = await res.json();
+            if (data.url) {
+                console.log(`[SHOMA] Cobalt Redirect SUCCESS`);
+                return NextResponse.redirect(data.url, 307);
+            }
+        } catch (e) {}
+
+        // 4. Last Resort: Local Innertube Proxy (Likely to fail on Vercel, but here as safety)
         const yt = await Innertube.create({ generate_session_locally: true });
         const info = await yt.getInfo(videoId, { client: 'TV' });
         const format = info.chooseFormat({ type: 'audio', quality: 'best' });
@@ -72,10 +88,10 @@ export async function GET(req: NextRequest) {
             });
         }
 
-        throw new Error("No playable source found");
+        throw new Error("No working stream found");
 
     } catch (error: any) {
-        console.error('[SHOMA] Super-Redirect Global Error:', error.message);
-        return NextResponse.json({ error: 'YouTube is blocking our servers. Please try again or use a different song.' }, { status: 500 });
+        console.error('[SHOMA] Super-Pipe Global Error:', error.message);
+        return NextResponse.json({ error: 'All audio sources failed. YouTube is blocking.' }, { status: 500 });
     }
 }
