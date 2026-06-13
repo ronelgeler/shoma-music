@@ -53,16 +53,68 @@ export default function Player() {
     setLastError('');
 
     if (currentTrack.source === 'youtube' && currentTrack.ytId) {
-        // DIRECT CLIENT BYPASS: Browser fetches from public proxy directly using its own IP
-        const directProxies = [
-            `https://pipedproxy.kavin.rocks/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`,
-            `https://pipedproxy-garuda.garudalinux.org/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`,
-            `https://pipedproxy.rivm.me/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`
-        ];
-        
-        setAvailableLinks(directProxies.map((url, i) => ({ url, source: `Direct Pipe ${i+1}` })));
-        setLinkIndex(0);
-        setPlayStatus('loading');
+        const videoId = currentTrack.ytId;
+        const links: { url: string, source: string }[] = [];
+
+        const tryExtract = async () => {
+            // 1. Try Piped API (Client-side)
+            const pipedInstances = ["https://pipedapi.kavin.rocks", "https://api.piped.victr.me", "https://piped-api.garudalinux.org"];
+            for (const instance of pipedInstances) {
+                try {
+                    const res = await fetch(`${instance}/streams/${videoId}`, { signal: AbortSignal.timeout(3000) });
+                    if (res.ok) {
+                        const data = await res.json();
+                        const stream = data.audioStreams?.find((s: any) => s.format === 'M4A') || data.audioStreams?.[0];
+                        if (stream?.url) links.push({ url: stream.url, source: `Piped (${new URL(instance).hostname})` });
+                    }
+                } catch (e) {}
+            }
+
+            // 2. Try Cobalt (Client-side)
+            try {
+                const res = await fetch("https://api.cobalt.tools/api/json", {
+                    method: "POST",
+                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" })
+                });
+                const data = await res.json();
+                if (data.url) links.push({ url: data.url, source: 'Cobalt' });
+            } catch (e) {}
+
+            // 3. Try Invidious (Client-side)
+            const invInstances = ["https://inv.vern.cc", "https://invidious.projectsegfau.lt"];
+            for (const instance of invInstances) {
+                try {
+                    const res = await fetch(`${instance}/api/v1/videos/${videoId}`, { signal: AbortSignal.timeout(3000) });
+                    if (res.ok) {
+                        const data = await res.json();
+                        const format = data.adaptiveFormats?.find((f: any) => f.type.startsWith('audio/'));
+                        if (format?.url) {
+                            const url = format.url.startsWith('http') ? format.url : `${instance}${format.url}`;
+                            links.push({ url, source: `Invidious (${new URL(instance).hostname})` });
+                        }
+                    }
+                } catch (e) {}
+            }
+
+            if (links.length > 0) {
+                setAvailableLinks(links);
+            } else {
+                // Last ditch: Our server (unlikely but why not)
+                fetch(`/api/yt-stream?id=${videoId}`)
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.links) setAvailableLinks(d.links);
+                        else throw new Error("Blocked");
+                    })
+                    .catch(() => {
+                        setLastError("All sources blocked. Try another song.");
+                        setPlayStatus('error');
+                    });
+            }
+        };
+
+        tryExtract();
     } else {
         const streamUrl = getStreamUrl(currentTrack, token!, userId!, ytCredentials);
         setAvailableLinks([{ url: streamUrl, source: 'iBroadcast' }]);
