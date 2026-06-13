@@ -391,10 +391,10 @@ export default function MusicLibrary() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen -mx-4 md:-mx-8 -mt-16 pt-16 pb-32">
+    <div className="flex flex-col md:flex-row min-h-screen -mx-4 md:-mx-8 -mt-16 pt-16 pb-32 overflow-x-hidden">
       {/* Sidebar */}
-      <div className="w-full md:w-64 bg-black p-6 border-r border-neutral-800 flex flex-col md:min-h-screen">
-        <div className="space-y-2 mb-8">
+      <div className="w-full md:w-64 bg-black p-4 md:p-6 border-b md:border-b-0 md:border-r border-neutral-800 flex flex-col shrink-0">
+        <div className="space-y-2 mb-4 md:mb-8">
           <button 
             onClick={() => setActivePlaylistId(null)}
             className={`w-full flex items-center gap-4 px-4 py-3 rounded-md transition font-medium ${!activePlaylistId ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}
@@ -403,9 +403,9 @@ export default function MusicLibrary() {
           </button>
         </div>
 
-        <div className="flex-1 flex flex-col">
-          <div className="flex items-center justify-between text-neutral-400 px-4 mb-4">
-            <span className="text-xs uppercase font-bold tracking-wider">Playlists</span>
+        <div className="flex-1 flex flex-col min-h-0">
+          <div className="flex items-center justify-between text-neutral-400 px-4 mb-2 md:mb-4">
+            <span className="text-[10px] md:text-xs uppercase font-bold tracking-wider">Playlists</span>
             <button 
               onClick={() => setIsCreatingPlaylist(!isCreatingPlaylist)}
               className="hover:text-white transition"
@@ -444,12 +444,12 @@ export default function MusicLibrary() {
             </div>
           )}
 
-          <div className="space-y-1 overflow-y-auto max-h-[40vh] md:max-h-none">
+          <div className="flex md:flex-col gap-1 overflow-x-auto md:overflow-y-auto pb-2 md:pb-0 scrollbar-hide">
             {playlists.map(p => (
               <button
                 key={p.uid}
                 onClick={() => setActivePlaylistId(p.uid)}
-                className={`w-full text-left px-4 py-2 text-sm rounded-md transition whitespace-nowrap overflow-x-auto scrollbar-hide flex items-center gap-3 ${activePlaylistId === p.uid ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}
+                className={`flex-shrink-0 md:w-full text-left px-4 py-2 text-xs md:text-sm rounded-md transition whitespace-nowrap flex items-center gap-2 md:gap-3 ${activePlaylistId === p.uid ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-white'}`}
               >
                 <ListMusic size={16} className="shrink-0" /> {p.name}
               </button>
@@ -459,10 +459,10 @@ export default function MusicLibrary() {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-6 md:p-8">
+      <div className="flex-1 p-4 md:p-8 min-w-0">
         <div className="flex flex-col xl:flex-row xl:items-start justify-between mb-8 gap-6">
-          <div className="flex-1 mt-auto">
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">{activePlaylistName}</h1>
+          <div className="flex-1">
+            <h1 className="text-3xl md:text-6xl font-bold text-white mb-6 tracking-tight truncate">{activePlaylistName}</h1>
             <SearchBar value={search} onChange={setSearch} />
           </div>
           

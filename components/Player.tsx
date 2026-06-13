@@ -64,7 +64,7 @@ export default function Player() {
   const streamUrl = getStreamUrl(currentTrack.uid, currentTrack.track_url, token, userId);
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 text-white z-50">
+    <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 pb-6 md:pb-4 text-white z-50">
       <audio
         ref={audioRef}
         src={streamUrl}
@@ -73,15 +73,15 @@ export default function Player() {
         onEnded={handleEnded}
         autoPlay={isPlaying}
       />
-      <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row items-center justify-between gap-2 md:gap-0">
+      <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-0">
         <div className="flex items-center justify-between w-full md:w-1/3 space-x-4">
-          <div className="flex items-center space-x-4 flex-1 overflow-hidden">
+          <div className="flex items-center space-x-3 flex-1 min-w-0">
             <div className="w-10 h-10 md:w-12 md:h-12 bg-neutral-800 rounded flex items-center justify-center shrink-0">
               <span className="text-neutral-500 text-[10px] md:text-xs text-center whitespace-nowrap">No Cover</span>
             </div>
-            <div className="overflow-x-auto scrollbar-hide whitespace-nowrap flex-1">
-              <div className="font-semibold text-sm">{currentTrack.title}</div>
-              <div className="text-neutral-400 text-xs">{currentTrack.artist}</div>
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-sm truncate">{currentTrack.title}</div>
+              <div className="text-neutral-400 text-xs truncate">{currentTrack.artist}</div>
             </div>
           </div>
           
@@ -91,9 +91,9 @@ export default function Player() {
             </button>
             <button 
               onClick={() => setIsPlaying(!isPlaying)} 
-              className="w-8 h-8 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shrink-0"
+              className="w-10 h-10 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shrink-0 shadow-lg"
             >
-              {isPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
+              {isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
             </button>
             <button onClick={playNext} className="text-neutral-400 hover:text-white transition">
               <SkipForward size={18} />

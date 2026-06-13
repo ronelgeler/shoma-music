@@ -106,18 +106,18 @@ export async function POST(req: NextRequest) {
             }
 
             console.log(`[SHOMA] Extracting YouTube metadata via Innertube for ID: ${videoId}`);
-            const info = await yt.getBasicInfo(videoId, { client: 'ANDROID_VR' });
-            
+            const info = await yt.getBasicInfo(videoId, { client: 'TV_EMBEDDED' });
+
             title = info.basic_info.title || 'Unknown Title';
             artist = info.basic_info.author || 'Unknown Artist';
             console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
 
-            console.log(`[SHOMA] Downloading best audio via Innertube (ANDROID_VR client)...`);
-            const stream = await yt.download(videoId, { 
-                type: 'audio', 
-                quality: 'best', 
+            console.log(`[SHOMA] Downloading best audio via Innertube (TV_EMBEDDED client)...`);
+            const stream = await yt.download(videoId, {
+                type: 'audio',
+                quality: 'best',
                 format: 'mp4',
-                client: 'ANDROID_VR' 
+                client: 'TV_EMBEDDED'
             });
             
             const chunks: any[] = [];
