@@ -132,50 +132,54 @@ export async function POST(req: NextRequest) {
 
         console.log(`[SHOMA] Attempting download for ID: ${videoId}`);
         
-        const tryDownload = async (clientType: 'IOS' | 'TV' | 'WEB') => {
-            console.log(`[SHOMA] Trying Innertube (${clientType} client)...`);
-            const info = await yt.getInfo(videoId, { 
-                client: clientType,
-                po_token: poToken || undefined
-            });
-            
-            title = info.basic_info.title || title;
-            artist = info.basic_info.author || artist;
-            
-            const stream = await info.download({
-                type: 'audio',
-                quality: 'best',
-                format: 'mp4',
-                client: clientType
-            });
-            return await streamToBuffer(stream);
-        };
+        const clients: ('TV' | 'MWEB' | 'WEB' | 'IOS')[] = ['TV', 'MWEB', 'WEB', 'IOS'];
+        let lastError = '';
 
-        try {
-            // 1. If logged in, use TV client immediately (most reliable)
-            if (youtubeTokens || poToken) {
-                buffer = await tryDownload('TV');
-            } else {
-                // 2. Otherwise try IOS first (fastest)
-                try {
-                    buffer = await tryDownload('IOS');
-                } catch (e: any) {
-                    console.warn(`[SHOMA] IOS failed, trying TV fallback...`);
-                    buffer = await tryDownload('TV');
+        for (const clientType of clients) {
+            try {
+                console.log(`[SHOMA] Trying Innertube (${clientType} client)...`);
+                
+                // Get info first
+                const info = await yt.getInfo(videoId, { 
+                    client: clientType,
+                    po_token: poToken || undefined
+                });
+
+                // If info works, try to download
+                console.log(`[SHOMA] Info success with ${clientType}, starting stream...`);
+                const stream = await info.download({
+                    type: 'audio',
+                    quality: 'best',
+                    format: 'mp4',
+                    client: clientType
+                });
+
+                buffer = await streamToBuffer(stream);
+                console.log(`[SHOMA] Innertube success with ${clientType}!`);
+                break; // We found a working client
+            } catch (e: any) {
+                console.warn(`[SHOMA] Innertube ${clientType} failed: ${e.message}`);
+                lastError = e.message;
+                // If it's a bot error, continue to next client. 
+                // If it's something else (like 404), maybe we should stop?
+                if (e.message.includes('bot') || e.message.includes('400')) {
+                    continue;
                 }
             }
-            console.log(`[SHOMA] Innertube success!`);
-        } catch (innertubeError: any) {
-            console.warn(`[SHOMA] Innertube failed: ${innertubeError.message}. Falling back to ytdl-core-enhanced...`);
-            
-            // 3. Fallback to ytdl-core-enhanced
+        }
+
+        // If Innertube failed all clients, try ytdl-core-enhanced
+        if (!buffer) {
+            console.warn(`[SHOMA] All Innertube clients failed. Falling back to ytdl-core-enhanced...`);
             try {
                 const options: any = {
                     quality: 'highestaudio',
                     filter: 'audioonly'
                 };
                 
-                const headers: any = {};
+                const headers: any = {
+                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1'
+                };
                 if (finalCookieHeader) headers.cookie = finalCookieHeader;
                 options.requestOptions = { headers };
                 if (poToken) options.poToken = poToken;
@@ -189,7 +193,7 @@ export async function POST(req: NextRequest) {
                 console.log(`[SHOMA] ytdl-core-enhanced success!`);
             } catch (ytdlError: any) {
                 console.error(`[SHOMA] All download methods failed.`);
-                throw new Error(`YouTube Stream Error: ${ytdlError.message}`);
+                throw new Error(`YouTube Stream Error: ${ytdlError.message} (Last Innertube Error: ${lastError})`);
             }
         }
     }

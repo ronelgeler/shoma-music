@@ -45,14 +45,14 @@ export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreateP
   return (
     <div className="w-full text-left text-neutral-400 text-sm pb-10 overflow-x-hidden">
       <div className="min-w-full">
-        <div className="grid grid-cols-[30px_1fr_80px] md:grid-cols-[40px_1fr_1fr_60px_80px] gap-4 md:gap-8 p-3 border-b border-neutral-800 font-medium items-center">
+        <div className="grid grid-cols-[35px_1fr_90px] md:grid-cols-[40px_1fr_1fr_60px_80px] gap-4 md:gap-8 px-4 py-4 border-b border-neutral-800 font-medium items-center">
           <div>#</div>
           <div>Title</div>
           <div className="hidden md:block">Album</div>
           <div className="hidden md:flex items-center"><Clock size={14} className="text-neutral-500" /></div>
           <div className="text-right pr-2">Actions</div>
         </div>
-        <div className="flex flex-col mt-2 space-y-1">
+        <div className="flex flex-col mt-1">
           {tracks.map((track, index) => {
             const isCurrent = currentTrack?.uid === track.uid;
             const showMenu = activeMenuId === track.uid;
@@ -60,24 +60,24 @@ export default function TrackList({ tracks, onDelete, onAddToPlaylist, onCreateP
             return (
               <div 
                 key={track.uid} 
-                className={`relative grid grid-cols-[30px_1fr_80px] md:grid-cols-[40px_1fr_1fr_60px_80px] gap-4 md:gap-8 p-3 rounded-md hover:bg-neutral-800/50 group transition items-center ${isCurrent ? 'bg-neutral-800/30 text-green-500' : ''}`}
+                className={`relative grid grid-cols-[35px_1fr_90px] md:grid-cols-[40px_1fr_1fr_60px_80px] gap-4 md:gap-8 px-4 py-5 md:py-3 rounded-md hover:bg-neutral-800/50 group transition items-center border-b border-neutral-800/30 last:border-0 ${isCurrent ? 'bg-neutral-800/40 text-green-500' : ''}`}
               >
-                <div className="flex items-center">
-                  <span className="group-hover:hidden">{index + 1}</span>
+                <div className="flex items-center h-full">
+                  <span className={`${isCurrent ? 'hidden' : 'group-hover:hidden'}`}>{index + 1}</span>
                   <button 
                     onClick={() => handlePlay(index)}
-                    className="hidden group-hover:flex text-white"
+                    className={`${isCurrent ? 'flex' : 'hidden group-hover:flex'} text-white items-center justify-center w-8 h-8 -ml-2`}
                   >
-                    <Play size={16} fill="currentColor" />
+                    <Play size={18} fill="currentColor" className={isCurrent ? 'text-green-500' : ''} />
                   </button>
                 </div>
-                <div className="min-w-0">
-                  <div className={`font-medium truncate ${isCurrent ? 'text-green-500' : 'text-white'}`}>{track.title}</div>
-                  <div className="text-xs mt-0.5 truncate">{track.artist}</div>
+                <div className="min-w-0 flex flex-col justify-center h-full" onClick={() => handlePlay(index)}>
+                  <div className={`font-semibold text-base md:text-sm truncate leading-tight ${isCurrent ? 'text-green-500' : 'text-white'}`}>{track.title}</div>
+                  <div className="text-xs mt-1 truncate opacity-70">{track.artist}</div>
                 </div>
                 <div className="hidden md:flex items-center truncate">{track.album || 'Unknown Album'}</div>
                 <div className="hidden md:flex items-center text-xs text-neutral-500 whitespace-nowrap">{formatTime(track.length)}</div>
-                <div className="flex items-center justify-end pr-1 gap-1 md:gap-2 whitespace-nowrap">
+                <div className="flex items-center justify-end pr-1 gap-1 md:gap-2">
                 <button 
                   onClick={() => setActiveMenuId(showMenu ? null : track.uid)}
                   className={`p-1.5 text-neutral-500 hover:text-white transition-colors ${showMenu ? 'opacity-100 text-white' : 'opacity-0 group-hover:opacity-100'}`}
