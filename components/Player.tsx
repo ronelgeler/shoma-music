@@ -80,7 +80,19 @@ export default function Player() {
 
   if (!currentTrack || !token || !userId) return null;
 
-  const streamUrl = getStreamUrl(currentTrack, token, userId, ytCredentials);
+  let streamUrl = getStreamUrl(currentTrack, token, userId, ytCredentials);
+  
+  // DIRECT BROWSER BYPASS: If YouTube track and it's failing or we want maximum reliability
+  // We can use a direct Piped proxy URL that the browser can fetch directly.
+  if (currentTrack.source === 'youtube' && currentTrack.ytId) {
+    // Rotation of stable piped proxy instances
+    const pipedProxies = [
+        `https://pipedproxy.kavin.rocks/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`,
+        `https://pipedproxy-garuda.garudalinux.org/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`
+    ];
+    // For now, let's use our API but fallback to these if we see the Error: Try Settings pattern
+    // Actually, let's just try to make the API even smarter by returning a response that works.
+  }
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 pb-6 md:pb-4 text-white z-50">
