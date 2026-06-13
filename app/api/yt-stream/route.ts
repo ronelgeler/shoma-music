@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
         const yt = await getYt();
         
         // Use ANDROID_MUSIC client as it's often most reliable for audio-only
-        const info = await yt.getInfo(videoId, { client: 'ANDROID_MUSIC' });
+        const info = await yt.getInfo(videoId, { client: 'ANDROID_MUSIC' as any });
         const format = info.chooseFormat({ type: 'audio', quality: 'best' });
         
         if (!format) throw new Error('No suitable audio format found');
@@ -33,7 +33,7 @@ export async function GET(req: NextRequest) {
             type: 'audio',
             quality: 'best',
             format: 'mp4',
-            client: 'ANDROID_MUSIC'
+            client: 'ANDROID_MUSIC' as any
         });
 
         // Convert the ReadableStream to a Response
