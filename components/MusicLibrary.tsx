@@ -26,6 +26,8 @@ export default function MusicLibrary() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [cookieInput, setCookieInput] = useState('');
   const [poTokenInput, setPoTokenInput] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [authData, setAuthData] = useState<{ code: string, url: string } | null>(null);
 
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
@@ -167,6 +169,35 @@ export default function MusicLibrary() {
     }
   };
 
+  const startYoutubeAuth = async () => {
+    setIsAuthenticating(true);
+    setAuthData(null);
+    
+    const eventSource = new EventSource('/api/youtube/auth');
+    
+    eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        if (data.type === 'code') {
+            setAuthData({ code: data.code, url: data.url });
+        } else if (data.type === 'tokens') {
+            setYtCredentials({ ...ytCredentials, tokens: data.credentials });
+            setIsAuthenticating(false);
+            setAuthData(null);
+            eventSource.close();
+            alert('YouTube Login Successful!');
+        } else if (data.type === 'error') {
+            alert('Auth Error: ' + data.message);
+            setIsAuthenticating(false);
+            eventSource.close();
+        }
+    };
+
+    eventSource.onerror = () => {
+        setIsAuthenticating(false);
+        eventSource.close();
+    };
+  };
+
   const handleSearchSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!downloadQuery.trim()) return;
@@ -219,7 +250,8 @@ export default function MusicLibrary() {
             token, 
             userId,
             youtubeCookie: ytCredentials?.cookie,
-            poToken: ytCredentials?.poToken
+            poToken: ytCredentials?.poToken,
+            youtubeTokens: ytCredentials?.tokens
         })
       });
       const data = await res.json();
@@ -263,7 +295,7 @@ export default function MusicLibrary() {
   };
 
   const handleSaveCredentials = () => {
-    setYtCredentials({ cookie: cookieInput, poToken: poTokenInput });
+    setYtCredentials({ ...ytCredentials, cookie: cookieInput, poToken: poTokenInput });
     setIsSettingsOpen(false);
   };
 
@@ -484,39 +516,69 @@ export default function MusicLibrary() {
             </div>
 
             {isSettingsOpen ? (
-                <div className="space-y-3 bg-black/40 p-3 rounded-lg border border-neutral-800 mb-4 animate-in fade-in slide-in-from-top-1">
+                <div className="space-y-4 bg-black/40 p-4 rounded-lg border border-neutral-800 mb-4 animate-in fade-in slide-in-from-top-1">
                     <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">YouTube Auth (Required for Bots)</span>
-                        <button onClick={() => setIsSettingsOpen(false)}><X size={14} /></button>
-                    </div>
-                    <p className="text-[10px] text-neutral-500 leading-tight">If downloads fail with "Confirm you’re not a bot", you need Cookies and a PO Token. Get them using "YouTube PO Token" browser extension.</p>
-                    
-                    <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-500 uppercase font-bold">Cookies (Netscape or JSON)</label>
-                        <textarea 
-                            className="w-full h-20 bg-neutral-800 border border-neutral-700 rounded p-2 text-[10px] text-white focus:outline-none focus:border-white"
-                            placeholder="Paste cookies here..."
-                            value={cookieInput}
-                            onChange={e => setCookieInput(e.target.value)}
-                        />
+                        <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">YouTube Authentication</span>
+                        <button onClick={() => setIsSettingsOpen(false)} className="text-neutral-500 hover:text-white"><X size={16} /></button>
                     </div>
 
-                    <div className="space-y-1">
-                        <label className="text-[10px] text-neutral-500 uppercase font-bold">PO Token</label>
-                        <input 
-                            type="text"
-                            className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-white"
-                            placeholder="Paste PO Token here..."
-                            value={poTokenInput}
-                            onChange={e => setPoTokenInput(e.target.value)}
-                        />
+                    <div className="space-y-3 pb-3 border-b border-neutral-800">
+                        <p className="text-[10px] text-neutral-500 font-medium">BEST WAY: Official Login (Permanent-ish)</p>
+                        {isAuthenticating ? (
+                            <div className="bg-neutral-800 p-3 rounded text-center space-y-2">
+                                {authData ? (
+                                    <>
+                                        <p className="text-[10px] text-neutral-400">Go to <a href={authData.url} target="_blank" className="text-white underline">{authData.url}</a> and enter:</p>
+                                        <p className="text-2xl font-mono font-bold tracking-widest text-white">{authData.code}</p>
+                                        <Loader2 className="animate-spin mx-auto text-neutral-500" size={16} />
+                                    </>
+                                ) : (
+                                    <Loader2 className="animate-spin mx-auto text-white" size={20} />
+                                )}
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={startYoutubeAuth}
+                                className="w-full bg-red-600 text-white text-xs font-bold py-2.5 rounded-md flex items-center justify-center gap-2 hover:bg-red-700 transition"
+                            >
+                                <Music size={14} /> {ytCredentials?.tokens ? 'Re-login to YouTube' : 'Login to YouTube'}
+                            </button>
+                        )}
+                        {ytCredentials?.tokens && !isAuthenticating && (
+                            <p className="text-[10px] text-green-500 text-center font-bold">✓ Logged in via OAuth</p>
+                        )}
+                    </div>
+
+                    <div className="space-y-3">
+                        <p className="text-[10px] text-neutral-500 font-medium">FALLBACK: Manual Tokens (If login fails)</p>
+                        <div className="space-y-1">
+                            <label className="text-[10px] text-neutral-500 uppercase font-bold">Cookies (JSON/Netscape)</label>
+                            <textarea 
+                                className="w-full h-16 bg-neutral-800 border border-neutral-700 rounded p-2 text-[10px] text-white focus:outline-none focus:border-white"
+                                placeholder="Paste cookies here..."
+                                value={cookieInput}
+                                onChange={e => setCookieInput(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] text-neutral-500 uppercase font-bold">PO Token</label>
+                            <input 
+                                type="text"
+                                className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-white"
+                                placeholder="Paste PO Token here..."
+                                value={poTokenInput}
+                                onChange={e => setPoTokenInput(e.target.value)}
+                            />
+                            <p className="text-[9px] text-neutral-600 mt-1">Get at <a href="https://po-token.pages.dev/" target="_blank" className="underline">po-token.pages.dev</a></p>
+                        </div>
                     </div>
 
                     <button 
                         onClick={handleSaveCredentials}
-                        className="w-full bg-white text-black text-xs font-bold py-2 rounded-full mt-2"
+                        className="w-full bg-white text-black text-xs font-bold py-2.5 rounded-full mt-2 hover:scale-[1.02] transition-transform"
                     >
-                        Save Credentials
+                        Save Manual Changes
                     </button>
                 </div>
             ) : (

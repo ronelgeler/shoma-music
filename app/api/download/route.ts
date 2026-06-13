@@ -70,7 +70,7 @@ async function streamToBuffer(stream: any): Promise<Buffer> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, token, userId, youtubeCookie, poToken } = await req.json();
+    const { query, token, userId, youtubeCookie, poToken, youtubeTokens } = await req.json();
 
     if (!query || !token || !userId) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
@@ -92,6 +92,16 @@ export async function POST(req: NextRequest) {
         generate_session_locally: true,
         po_token: poToken || process.env.YOUTUBE_PO_TOKEN || undefined
     });
+
+    // If we have OAuth tokens, sign in
+    if (youtubeTokens) {
+        console.log(`[SHOMA] Using YouTube OAuth tokens...`);
+        try {
+            await yt.session.signIn(youtubeTokens);
+        } catch (authError: any) {
+            console.warn(`[SHOMA] OAuth Sign-in failed: ${authError.message}`);
+        }
+    }
 
     if (!targetUrl.includes('http')) {
          console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);

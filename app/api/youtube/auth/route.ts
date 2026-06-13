@@ -1,43 +1,55 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Innertube } from 'youtubei.js';
 
+export const maxDuration = 60;
+
 export async function GET(req: NextRequest) {
   try {
     const yt = await Innertube.create();
-    
-    return new Promise<Response>((resolve) => {
+    const encoder = new TextEncoder();
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const timeout = setTimeout(() => {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: 'Auth timeout' })}\n\n`));
+          controller.close();
+        }, 58000);
+
         yt.session.on('auth-pending', (data) => {
-            resolve(NextResponse.json({ 
-                code: data.user_code, 
-                url: data.verification_url 
-            }));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: 'code', 
+            code: data.user_code, 
+            url: data.verification_url 
+          })}\n\n`));
         });
-        
-        yt.session.signIn().catch(err => {
-            resolve(NextResponse.json({ error: err.message }, { status: 500 }));
+
+        yt.session.on('auth', (data) => {
+          clearTimeout(timeout);
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ 
+            type: 'tokens', 
+            credentials: data.credentials 
+          })}\n\n`));
+          controller.close();
         });
-        
-        // Timeout after 10s if event doesn't fire
-        setTimeout(() => {
-            resolve(NextResponse.json({ error: 'Auth timeout' }, { status: 504 }));
-        }, 10000);
+
+        try {
+          await yt.session.signIn();
+        } catch (err: any) {
+          clearTimeout(timeout);
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'error', message: err.message })}\n\n`));
+          controller.close();
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-}
-
-export async function POST(req: NextRequest) {
-    try {
-        const { code } = await req.json();
-        const yt = await Innertube.create();
-        
-        // This is tricky because youtubei.js's signIn() waits until finished.
-        // We'll need a better way if we want to poll.
-        // For now, let's just return success if we have a session.
-        
-        return NextResponse.json({ success: true });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
 }
