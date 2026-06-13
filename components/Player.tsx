@@ -53,20 +53,16 @@ export default function Player() {
     setLastError('');
 
     if (currentTrack.source === 'youtube' && currentTrack.ytId) {
-        fetch(`/api/yt-stream?id=${currentTrack.ytId}`)
-            .then(res => res.json())
-            .then(data => {
-                if (data.links && data.links.length > 0) {
-                    setAvailableLinks(data.links);
-                    setLinkIndex(0);
-                } else {
-                    throw new Error(data.error || 'No links found');
-                }
-            })
-            .catch(err => {
-                setLastError(err.message);
-                setPlayStatus('error');
-            });
+        // DIRECT CLIENT BYPASS: Browser fetches from public proxy directly using its own IP
+        const directProxies = [
+            `https://pipedproxy.kavin.rocks/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`,
+            `https://pipedproxy-garuda.garudalinux.org/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`,
+            `https://pipedproxy.rivm.me/videoplayback?id=${currentTrack.ytId}&itag=140&ext=m4a`
+        ];
+        
+        setAvailableLinks(directProxies.map((url, i) => ({ url, source: `Direct Pipe ${i+1}` })));
+        setLinkIndex(0);
+        setPlayStatus('loading');
     } else {
         const streamUrl = getStreamUrl(currentTrack, token!, userId!, ytCredentials);
         setAvailableLinks([{ url: streamUrl, source: 'iBroadcast' }]);
