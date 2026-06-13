@@ -80,6 +80,7 @@ export default function MusicLibrary() {
     }, 1000);
     
     try {
+        console.log(`[SHOMA] Background download START for: ${result.title} (${result.url})`);
         const res = await fetch('/api/download', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -748,7 +749,7 @@ export default function MusicLibrary() {
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <span className="text-[10px] text-neutral-500 pr-2 shrink-0">{res.duration}</span>
-                        {uploadingUids.includes(res.uid) ? (
+                        {(uploadingUids.includes(res.uid) || uploadingUids.includes(res.ytId) || !!uploadProgress[res.uid] || !!uploadProgress[res.ytId]) ? (
                             <Loader2 size={12} className="animate-spin text-white mr-2" />
                         ) : (
                             <Play size={12} className="text-neutral-500 group-hover:text-white mr-2" fill="currentColor" />

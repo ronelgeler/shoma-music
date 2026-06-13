@@ -23,27 +23,37 @@ export async function GET(req: NextRequest) {
         console.log(`[SHOMA] Streaming YouTube audio for ID: ${videoId}`);
         const yt = await getYt();
         
-        // Use ANDROID_MUSIC client as it's often most reliable for audio-only
-        const info = await yt.getInfo(videoId, { client: 'ANDROID_MUSIC' as any });
-        const format = info.chooseFormat({ type: 'audio', quality: 'best' });
-        
-        if (!format) throw new Error('No suitable audio format found');
-        
-        const stream = await info.download({
-            type: 'audio',
-            quality: 'best',
-            format: 'mp4',
-            client: 'ANDROID_MUSIC' as any
-        });
+        // Try multiple clients for stream extraction, not just one
+        const clients: ('YTMUSIC_ANDROID' | 'TV' | 'ANDROID_VR' | 'MWEB' | 'IOS')[] = ['YTMUSIC_ANDROID', 'TV', 'ANDROID_VR', 'MWEB', 'IOS'];
+        let lastError = '';
 
-        // Convert the ReadableStream to a Response
-        return new Response(stream as any, {
-            headers: {
-                'Content-Type': 'audio/mp4',
-                'Cache-Control': 'public, max-age=3600',
-                'Accept-Ranges': 'bytes',
-            },
-        });
+        for (const clientType of clients) {
+            try {
+                console.log(`[SHOMA] Stream attempt with client: ${clientType}`);
+                const info = await yt.getInfo(videoId, { client: clientType as any });
+                const stream = await info.download({
+                    type: 'audio',
+                    quality: 'best',
+                    format: 'mp4',
+                    client: clientType as any
+                });
+
+                console.log(`[SHOMA] Stream SUCCESS with client: ${clientType}`);
+
+                return new Response(stream as any, {
+                    headers: {
+                        'Content-Type': 'audio/mp4',
+                        'Accept-Ranges': 'bytes',
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    },
+                });
+            } catch (e: any) {
+                console.error(`[SHOMA] Stream client ${clientType} FAILED:`, e.message);
+                lastError = e.message;
+            }
+        }
+
+        throw new Error(`All stream clients failed. Last error: ${lastError}`);
     } catch (error: any) {
         console.error('[SHOMA] Stream API Error:', error.message);
         ytInstance = null; // Reset on failure

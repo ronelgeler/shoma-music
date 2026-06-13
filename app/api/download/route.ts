@@ -75,13 +75,17 @@ async function streamToBuffer(stream: any): Promise<Buffer> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, token, userId, youtubeCookie, poToken, youtubeTokens } = await req.json();
+    const body = await req.json();
+    const { query, token, userId, youtubeCookie, poToken, youtubeTokens } = body;
+
+    console.log('[SHOMA] === NEW DOWNLOAD REQUEST ===');
+    console.log('[SHOMA] Query:', query);
+    console.log('[SHOMA] Token present:', !!token);
+    console.log('[SHOMA] UserId present:', !!userId);
 
     if (!query || !token || !userId) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
     }
-
-    console.log(`[SHOMA] Processing: ${query}`);
 
     let title = 'Unknown Title';
     let artist = 'Unknown Artist';
@@ -92,11 +96,13 @@ export async function POST(req: NextRequest) {
     const parsedCookies = parseCookies(cookieStr || '');
     const finalCookieHeader = cookiesToString(parsedCookies);
 
+    console.log('[SHOMA] Creating Innertube session...');
     const yt = await Innertube.create({ 
         cookie: finalCookieHeader || undefined,
         generate_session_locally: true,
         po_token: poToken || process.env.YOUTUBE_PO_TOKEN || undefined
     });
+    console.log('[SHOMA] Innertube session created.');
 
     // If we have OAuth tokens, sign in and WAIT for session to be ready
     if (youtubeTokens) {
