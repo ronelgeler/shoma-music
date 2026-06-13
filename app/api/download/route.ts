@@ -70,7 +70,7 @@ async function streamToBuffer(stream: any): Promise<Buffer> {
 
 export async function POST(req: NextRequest) {
   try {
-    const { query, token, userId, youtubeCookie } = await req.json();
+    const { query, token, userId, youtubeCookie, poToken } = await req.json();
 
     if (!query || !token || !userId) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
@@ -89,7 +89,8 @@ export async function POST(req: NextRequest) {
 
     const yt = await Innertube.create({ 
         cookie: finalCookieHeader || undefined,
-        generate_session_locally: true
+        generate_session_locally: true,
+        po_token: poToken || process.env.YOUTUBE_PO_TOKEN || undefined
     });
 
     if (!targetUrl.includes('http')) {
@@ -122,9 +123,13 @@ export async function POST(req: NextRequest) {
         console.log(`[SHOMA] Attempting download for ID: ${videoId}`);
         
         try {
-            // 1. Try Innertube first (metadata + stream)
-            console.log(`[SHOMA] Trying Innertube (IOS client)...`);
-            const info = await yt.getInfo(videoId, { client: 'IOS' });
+            // 1. Try Innertube first
+            const clientToUse = poToken ? 'WEB' : 'IOS';
+            console.log(`[SHOMA] Trying Innertube (${clientToUse} client)...`);
+            const info = await yt.getInfo(videoId, { 
+                client: clientToUse,
+                po_token: poToken || undefined
+            });
             title = info.basic_info.title || 'Unknown Title';
             artist = info.basic_info.author || 'Unknown Artist';
             
@@ -132,7 +137,7 @@ export async function POST(req: NextRequest) {
                 type: 'audio',
                 quality: 'best',
                 format: 'mp4',
-                client: 'IOS'
+                client: clientToUse
             });
             buffer = await streamToBuffer(stream);
             console.log(`[SHOMA] Innertube success!`);
@@ -145,12 +150,17 @@ export async function POST(req: NextRequest) {
                     quality: 'highestaudio',
                     filter: 'audioonly'
                 };
-                if (finalCookieHeader) {
-                    options.requestOptions = {
-                        headers: {
-                            cookie: finalCookieHeader
-                        }
-                    };
+                
+                // Pass cookies and poToken to ytdl
+                const headers: any = {};
+                if (finalCookieHeader) headers.cookie = finalCookieHeader;
+                
+                options.requestOptions = { headers };
+                
+                // ytdl-core-enhanced supports poToken via a specific option or env var
+                if (poToken) {
+                    // Some versions use a specific field, others use requestOptions
+                    options.poToken = poToken;
                 }
 
                 const info = await ytdl.getInfo(videoId, options);

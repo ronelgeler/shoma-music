@@ -25,6 +25,7 @@ export default function MusicLibrary() {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [cookieInput, setCookieInput] = useState('');
+  const [poTokenInput, setPoTokenInput] = useState('');
 
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
@@ -50,6 +51,7 @@ export default function MusicLibrary() {
   useEffect(() => {
     if (ytCredentials) {
         setCookieInput(ytCredentials.cookie || '');
+        setPoTokenInput(ytCredentials.poToken || '');
     }
   }, [ytCredentials]);
 
@@ -216,7 +218,8 @@ export default function MusicLibrary() {
             query: queryUrl, 
             token, 
             userId,
-            youtubeCookie: ytCredentials?.cookie
+            youtubeCookie: ytCredentials?.cookie,
+            poToken: ytCredentials?.poToken
         })
       });
       const data = await res.json();
@@ -259,8 +262,8 @@ export default function MusicLibrary() {
     }
   };
 
-  const handleSaveCookie = () => {
-    setYtCredentials({ cookie: cookieInput });
+  const handleSaveCredentials = () => {
+    setYtCredentials({ cookie: cookieInput, poToken: poTokenInput });
     setIsSettingsOpen(false);
   };
 
@@ -483,21 +486,37 @@ export default function MusicLibrary() {
             {isSettingsOpen ? (
                 <div className="space-y-3 bg-black/40 p-3 rounded-lg border border-neutral-800 mb-4 animate-in fade-in slide-in-from-top-1">
                     <div className="flex justify-between items-center">
-                        <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">YouTube Auth (Optional)</span>
+                        <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">YouTube Auth (Required for Bots)</span>
                         <button onClick={() => setIsSettingsOpen(false)}><X size={14} /></button>
                     </div>
-                    <p className="text-[10px] text-neutral-500 leading-tight">If downloads fail with "Login Required", paste your YouTube cookies here. Use "Get cookies.txt" extension on YouTube.</p>
-                    <textarea 
-                        className="w-full h-24 bg-neutral-800 border border-neutral-700 rounded p-2 text-[10px] text-white focus:outline-none focus:border-white"
-                        placeholder="Paste cookies.txt content here..."
-                        value={cookieInput}
-                        onChange={e => setCookieInput(e.target.value)}
-                    />
+                    <p className="text-[10px] text-neutral-500 leading-tight">If downloads fail with "Confirm you’re not a bot", you need Cookies and a PO Token. Get them using "YouTube PO Token" browser extension.</p>
+                    
+                    <div className="space-y-1">
+                        <label className="text-[10px] text-neutral-500 uppercase font-bold">Cookies (Netscape or JSON)</label>
+                        <textarea 
+                            className="w-full h-20 bg-neutral-800 border border-neutral-700 rounded p-2 text-[10px] text-white focus:outline-none focus:border-white"
+                            placeholder="Paste cookies here..."
+                            value={cookieInput}
+                            onChange={e => setCookieInput(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="space-y-1">
+                        <label className="text-[10px] text-neutral-500 uppercase font-bold">PO Token</label>
+                        <input 
+                            type="text"
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-white"
+                            placeholder="Paste PO Token here..."
+                            value={poTokenInput}
+                            onChange={e => setPoTokenInput(e.target.value)}
+                        />
+                    </div>
+
                     <button 
-                        onClick={handleSaveCookie}
-                        className="w-full bg-white text-black text-xs font-bold py-2 rounded-full"
+                        onClick={handleSaveCredentials}
+                        className="w-full bg-white text-black text-xs font-bold py-2 rounded-full mt-2"
                     >
-                        Save Cookies
+                        Save Credentials
                     </button>
                 </div>
             ) : (
