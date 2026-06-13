@@ -21,6 +21,9 @@ export default function Player() {
   const [volume, setVolume] = useState(1);
   const [playStatus, setPlayStatus] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
   const [lastError, setLastError] = useState('');
+  
+  const [availableLinks, setAvailableLinks] = useState<{ url: string, source: string }[]>([]);
+  const [linkIndex, setLinkIndex] = useState(0);
 
   useEffect(() => {
     if (audioRef.current) {
@@ -28,29 +31,71 @@ export default function Player() {
     }
   }, [volume]);
 
+  // Handle Play/Pause
   useEffect(() => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        setPlayStatus('loading');
+    if (audioRef.current && isPlaying && playStatus !== 'error') {
         audioRef.current.play().catch(e => {
             console.error("[SHOMA] Playback failed:", e);
-            setPlayStatus('error');
-            setLastError(e.message || 'Playback failed');
+            if (playStatus !== 'loading') setPlayStatus('error');
         });
-      } else {
+    } else if (audioRef.current) {
         audioRef.current.pause();
-        setPlayStatus('idle');
-      }
     }
-  }, [isPlaying, currentTrack?.uid, currentTrack?.ytId]);
+  }, [isPlaying]);
 
-  // Force load on track change
+  // Fetch links and start rotation when track changes
   useEffect(() => {
-    if (audioRef.current) {
-        setPlayStatus('loading');
-        audioRef.current.load();
+    if (!currentTrack) return;
+    
+    setAvailableLinks([]);
+    setLinkIndex(0);
+    setPlayStatus('loading');
+    setLastError('');
+
+    if (currentTrack.source === 'youtube' && currentTrack.ytId) {
+        fetch(`/api/yt-stream?id=${currentTrack.ytId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.links && data.links.length > 0) {
+                    setAvailableLinks(data.links);
+                    setLinkIndex(0);
+                } else {
+                    throw new Error(data.error || 'No links found');
+                }
+            })
+            .catch(err => {
+                setLastError(err.message);
+                setPlayStatus('error');
+            });
+    } else {
+        const streamUrl = getStreamUrl(currentTrack, token!, userId!, ytCredentials);
+        setAvailableLinks([{ url: streamUrl, source: 'iBroadcast' }]);
+        setLinkIndex(0);
     }
   }, [currentTrack?.uid, currentTrack?.ytId]);
+
+  // Auto-load when links are ready or rotation happens
+  useEffect(() => {
+    if (audioRef.current && availableLinks.length > 0) {
+        audioRef.current.load();
+        if (isPlaying) {
+            audioRef.current.play().catch(() => {
+                // If it fails immediately, onError will handle rotation
+            });
+        }
+    }
+  }, [availableLinks, linkIndex]);
+
+  const handleAudioError = () => {
+    console.warn(`[SHOMA] Link ${linkIndex} failed (${availableLinks[linkIndex]?.source})`);
+    if (linkIndex < availableLinks.length - 1) {
+        setLinkIndex(prev => prev + 1);
+        setPlayStatus('loading');
+    } else {
+        setLastError("All sources failed");
+        setPlayStatus('error');
+    }
+  };
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
@@ -80,9 +125,8 @@ export default function Player() {
 
   if (!currentTrack || !token || !userId) return null;
 
-  let streamBaseUrl = getStreamUrl(currentTrack, token, userId, ytCredentials);
-  // Cache busting
-  const streamUrl = streamBaseUrl + (streamBaseUrl.includes('?') ? '&' : '?') + `cb=${Date.now()}`;
+  const currentLink = availableLinks[linkIndex];
+  const streamUrl = currentLink ? currentLink.url : '';
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 pb-6 md:pb-4 text-white z-50">
@@ -93,22 +137,7 @@ export default function Player() {
         onLoadedMetadata={handleTimeUpdate}
         onEnded={handleEnded}
         autoPlay={isPlaying}
-        onError={(e) => {
-            console.error("[SHOMA] Audio Element Error:", e);
-            // Try to figure out if it's a 403/500 from the server
-            fetch(streamUrl, { method: 'HEAD' }).then(res => {
-                if (!res.ok) {
-                    setLastError(`Server Blocked (${res.status})`);
-                    setPlayStatus('error');
-                } else {
-                    setLastError("Format not supported");
-                    setPlayStatus('error');
-                }
-            }).catch(() => {
-                setLastError("Network/CORS Error");
-                setPlayStatus('error');
-            });
-        }}
+        onError={handleAudioError}
       />
       <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-0">
         <div className="flex items-center justify-between w-full md:w-1/3 space-x-4">
@@ -124,11 +153,19 @@ export default function Player() {
               <div className="font-semibold text-sm truncate">{currentTrack.title}</div>
               <div className="text-neutral-400 text-xs truncate flex items-center gap-2">
                 {currentTrack.artist}
-                {playStatus === 'loading' && <span className="text-blue-400 animate-pulse text-[10px] font-bold uppercase tracking-wider">• Connecting...</span>}
-                {playStatus === 'playing' && <span className="text-green-500 text-[10px] font-bold uppercase tracking-wider">• Live Stream</span>}
+                {playStatus === 'loading' && (
+                    <span className="text-blue-400 animate-pulse text-[10px] font-bold uppercase tracking-wider">
+                        • {currentLink ? `Connecting ${currentLink.source}...` : 'Fetching Links...'}
+                    </span>
+                )}
+                {playStatus === 'playing' && (
+                    <span className="text-green-500 text-[10px] font-bold uppercase tracking-wider">
+                        • Streaming ({currentLink?.source || 'Direct'})
+                    </span>
+                )}
                 {playStatus === 'error' && (
                     <span className="text-red-500 text-[10px] font-bold uppercase tracking-wider" title={lastError}>
-                        • Error: {lastError.length > 20 ? 'Failed to stream' : lastError}
+                        • Error: {lastError.length > 20 ? 'No links worked' : lastError}
                     </span>
                 )}
               </div>
