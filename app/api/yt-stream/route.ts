@@ -31,18 +31,18 @@ export async function GET(req: NextRequest) {
     }
 
     try {
-        console.log(`[SHOMA] Resilient stream request: ${videoId}`);
+        console.log(`[SHOMA] Ultimate Resilient request: ${videoId}`);
         
-        // 1. Try Innertube with Client Rotation
+        // 1. Fresh Innertube Session with specialized clients
         const yt = await Innertube.create({
-            cache: new UniversalCache(false),
-            generate_session_locally: true
+            generate_session_locally: true,
+            retrieve_player: true
         });
         
-        const clients: any[] = ['TV', 'ANDROID_VR', 'MWEB', 'ANDROID_TESTSUITE'];
+        const clients: any[] = ['ANDROID_VR', 'TV', 'MWEB', 'IOS'];
         for (const clientType of clients) {
             try {
-                console.log(`[SHOMA] Trying ${clientType}...`);
+                console.log(`[SHOMA] Trying client: ${clientType}`);
                 const info = await yt.getInfo(videoId, { client: clientType });
                 const format = info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' });
 
@@ -64,37 +64,47 @@ export async function GET(req: NextRequest) {
                     });
                 }
             } catch (e: any) {
-                console.warn(`[SHOMA] ${clientType} failed:`, e.message);
+                console.warn(`[SHOMA] Client ${clientType} failed:`, e.message);
             }
         }
 
-        // 2. Fallback: Cobalt API (Direct Proxy)
-        console.warn(`[SHOMA] Falling back to Cobalt...`);
-        try {
-            const cobaltRes = await fetch("https://api.cobalt.tools/api/json", {
-                method: "POST",
-                headers: { "Accept": "application/json", "Content-Type": "application/json" },
-                body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" })
-            });
-            const cobaltData = await cobaltRes.json();
-            if (cobaltData.url) {
-                const audioRes = await fetch(cobaltData.url);
-                return new Response(audioRes.body as any, {
-                    headers: { 'Content-Type': 'audio/mpeg', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600' },
-                });
-            }
-        } catch (e: any) { console.warn(`[SHOMA] Cobalt failed:`, e.message); }
+        // 2. Fallback: Cobalt with multiple instances
+        const cobaltInstances = [
+            "https://api.cobalt.tools/api/json",
+            "https://cobalt.dark-viper.xyz/api/json",
+            "https://cobalt-api.kavin.rocks/api/json"
+        ];
 
-        // 3. Fallback: Invidious Proxy (Public Instances)
-        console.warn(`[SHOMA] Falling back to Invidious...`);
-        const invidiousInstances = ['https://invidious.snopyta.org', 'https://yewtu.be', 'https://invidious.kavin.rocks'];
+        for (const instance of cobaltInstances) {
+            try {
+                console.log(`[SHOMA] Trying Cobalt instance: ${instance}`);
+                const res = await fetch(instance, {
+                    method: "POST",
+                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" })
+                });
+                const data = await res.json();
+                if (data.url) {
+                    console.log(`[SHOMA] Cobalt SUCCESS`);
+                    const audioRes = await fetch(data.url);
+                    return new Response(audioRes.body as any, {
+                        headers: { 'Content-Type': 'audio/mpeg', 'Accept-Ranges': 'bytes', 'Cache-Control': 'public, max-age=3600' },
+                    });
+                }
+            } catch (e) { console.warn(`[SHOMA] Cobalt instance ${instance} failed`); }
+        }
+
+        // 3. Fallback: Direct Invidious Redirect (Fast & usually works in browser)
+        const invidiousInstances = ['https://yewtu.be', 'https://invidious.snopyta.org', 'https://vid.puffyan.us'];
         for (const instance of invidiousInstances) {
             try {
+                console.log(`[SHOMA] Trying Invidious instance: ${instance}`);
                 const streamUrl = `${instance}/latest/api/v1/videos/${videoId}`;
                 const invRes = await fetch(streamUrl);
                 const invData = await invRes.json();
                 const audioFormat = invData.adaptiveFormats?.find((f: any) => f.type.startsWith('audio/'));
                 if (audioFormat?.url) {
+                    console.log(`[SHOMA] Invidious SUCCESS`);
                     const audioRes = await fetch(audioFormat.url);
                     return new Response(audioRes.body as any, {
                         headers: { 'Content-Type': 'audio/mp4', 'Accept-Ranges': 'bytes' },
@@ -104,6 +114,7 @@ export async function GET(req: NextRequest) {
         }
 
         // 4. Final: ytdl-core-enhanced
+        console.warn(`[SHOMA] All specialized methods failed, using final ytdl fallback`);
         const stream = ytdl(videoId, {
             filter: 'audioonly',
             quality: 'highestaudio',
@@ -118,7 +129,7 @@ export async function GET(req: NextRequest) {
         });
 
     } catch (error: any) {
-        console.error('[SHOMA] Global Stream Error:', error.message);
-        return NextResponse.json({ error: 'All streams failed. Use Settings for Cookies.' }, { status: 500 });
+        console.error('[SHOMA] Critical Global Stream Error:', error.message);
+        return NextResponse.json({ error: 'Playback failed. YouTube is blocking. Try another song or try later.' }, { status: 500 });
     }
 }
