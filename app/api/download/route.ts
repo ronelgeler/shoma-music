@@ -5,10 +5,7 @@ import crypto from 'crypto';
 import NodeID3 from 'node-id3';
 import { Innertube } from 'youtubei.js';
 import scdl from 'soundcloud-downloader';
-
-// Prevent ytdl-core-enhanced from writing to read-only filesystem
-process.env.YTDL_NO_DEBUG_FILE = '1';
-process.env.YTDL_DEBUG_PATH = '/tmp';
+import { Readable } from 'stream';
 
 // @ts-ignore
 import ytdl from 'ytdl-core-enhanced';
@@ -16,61 +13,43 @@ import ytdl from 'ytdl-core-enhanced';
 export const maxDuration = 300;
 
 function parseCookies(str: string) {
-    if (!str) return [];
-    
-    // Netscape format (tabs or comment header)
-    if (str.includes('\t') || str.includes('# Netscape')) {
-        return str.split('\n')
-            .map(line => line.trim())
-            .filter(line => line && !line.startsWith('#'))
-            .map(line => {
-                const parts = line.split('\t');
-                if (parts.length >= 7) {
-                    return { name: parts[5], value: parts[6] };
-                }
-                return null;
-            })
-            .filter((c): c is { name: string; value: string } => c !== null);
-    }
-    
-    // JSON format
-    if (str.trim().startsWith('[')) {
-        try {
-            const parsed = JSON.parse(str);
-            return parsed.map((c: any) => ({ 
-                name: c.name || c.key, 
-                value: c.value 
-            })).filter((c: any) => c.name && c.value);
-        } catch (e) {}
-    }
-
-    // Key=Value format
-    return str.split(';').map(c => {
-        const [name, ...value] = c.split('=');
-        if (!name || !value.length) return null;
-        return { name: name.trim(), value: value.join('=').trim() };
-    }).filter((c): c is { name: string; value: string } => c !== null);
+  if (!str) return {};
+  const cookies: Record<string, string> = {};
+  if (str.includes('\t') || str.includes('# Netscape')) {
+      str.split('\n').forEach(line => {
+          const parts = line.trim().split('\t');
+          if (parts.length >= 7) cookies[parts[5]] = parts[6];
+      });
+  } else {
+      str.split(';').forEach(c => {
+          const [k, v] = c.trim().split('=');
+          if (k && v) cookies[k] = v;
+      });
+  }
+  return cookies;
 }
 
-function cookiesToString(cookies: { name: string; value: string }[]) {
-    return cookies.map(c => `${c.name}=${c.value}`).join('; ');
+function cookiesToString(cookies: Record<string, string>) {
+  return Object.entries(cookies).map(([k, v]) => `${k}=${v}`).join('; ');
 }
 
 async function streamToBuffer(stream: any): Promise<Buffer> {
-    const chunks: any[] = [];
-    if (typeof stream.getReader === 'function') {
+    if (stream.getReader) {
         const reader = stream.getReader();
+        const chunks: Uint8Array[] = [];
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
             chunks.push(value);
         }
-    } else {
-        for await (const chunk of stream) {
-            chunks.push(chunk);
-        }
+        return Buffer.concat(chunks);
     }
-    return Buffer.concat(chunks);
+    return new Promise((resolve, reject) => {
+        const chunks: any[] = [];
+        stream.on('data', (chunk: any) => chunks.push(chunk));
+        stream.on('end', () => resolve(Buffer.concat(chunks)));
+        stream.on('error', reject);
+    });
 }
 
 export async function POST(req: NextRequest) {
@@ -80,8 +59,6 @@ export async function POST(req: NextRequest) {
 
     console.log('[SHOMA] === NEW DOWNLOAD REQUEST ===');
     console.log('[SHOMA] Query:', query);
-    console.log('[SHOMA] Token present:', !!token);
-    console.log('[SHOMA] UserId present:', !!userId);
 
     if (!query || !token || !userId) {
       return NextResponse.json({ error: 'Missing parameters' }, { status: 400 });
@@ -96,126 +73,100 @@ export async function POST(req: NextRequest) {
     const parsedCookies = parseCookies(cookieStr || '');
     const finalCookieHeader = cookiesToString(parsedCookies);
 
-    console.log('[SHOMA] Creating Innertube session...');
     const yt = await Innertube.create({ 
         cookie: finalCookieHeader || undefined,
         generate_session_locally: true,
         po_token: poToken || process.env.YOUTUBE_PO_TOKEN || undefined
     });
-    console.log('[SHOMA] Innertube session created.');
 
-    // If we have OAuth tokens, sign in and WAIT for session to be ready
     if (youtubeTokens) {
-        console.log(`[SHOMA] Using YouTube OAuth tokens...`);
-        try {
-            await yt.session.signIn(youtubeTokens);
-            // Small delay to ensure session is applied internally
-            await new Promise(resolve => setTimeout(resolve, 500));
-        } catch (authError: any) {
-            console.warn(`[SHOMA] OAuth Sign-in failed: ${authError.message}`);
-        }
+        try { await yt.session.signIn(youtubeTokens); } catch (e) {}
     }
 
     if (!targetUrl.includes('http')) {
-         console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
          const searchResults = await yt.search(targetUrl, { type: 'video' });
-         if (!searchResults.videos.length) {
-             throw new Error("No videos found on YouTube");
+         if (searchResults.videos.length) {
+             targetUrl = `https://www.youtube.com/watch?v=${(searchResults.videos[0] as any).id}`;
          }
-         targetUrl = `https://www.youtube.com/watch?v=${(searchResults.videos[0] as any).id}`;
     }
 
     if (targetUrl.includes('soundcloud.com')) {
-        console.log(`[SHOMA] Extracting SoundCloud metadata for: ${targetUrl}`);
         const scInfo = await scdl.getInfo(targetUrl);
         title = scInfo.title || 'Unknown Title';
         artist = scInfo.user?.username || 'Unknown Artist';
-        
-        console.log(`[SHOMA] Downloading SoundCloud audio...`);
         const stream = await scdl.download(targetUrl);
         buffer = await streamToBuffer(stream);
     } else {
-        // Extract the video ID from the URL
         let videoId = targetUrl;
-        if (targetUrl.includes('v=')) {
-            videoId = targetUrl.split('v=')[1].split('&')[0];
-        } else if (targetUrl.includes('youtu.be/')) {
-            videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
-        }
+        if (targetUrl.includes('v=')) videoId = targetUrl.split('v=')[1].split('&')[0];
+        else if (targetUrl.includes('youtu.be/')) videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
 
-        console.log(`[SHOMA] Attempting download for ID: ${videoId}`);
-        
-        // Use Android Music or TV for logged in users, as they handle 'login required' videos better
-        const clients: ('YTMUSIC_ANDROID' | 'TV' | 'MWEB' | 'WEB' | 'IOS')[] = 
-            youtubeTokens ? ['YTMUSIC_ANDROID', 'TV', 'MWEB'] : ['TV', 'IOS', 'MWEB', 'WEB'];
-        
+        console.log(`[SHOMA] Target Video ID: ${videoId}`);
+
+        // HYPER-RESILIENT EXTRACTION
+        const clients: any[] = ['TV', 'ANDROID_VR', 'ANDROID_MUSIC', 'MWEB'];
         let lastError = '';
 
         for (const clientType of clients) {
             try {
-                console.log(`[SHOMA] Trying Innertube (${clientType} client)...`);
-                
-                // Get info first
-                const info = await yt.getInfo(videoId, { 
-                    client: clientType as any,
-                    po_token: poToken || undefined
-                });
-
-                // If info works, try to download
-                console.log(`[SHOMA] Info success with ${clientType}, starting stream...`);
-                const stream = await info.download({
-                    type: 'audio',
-                    quality: 'best',
-                    format: 'mp4',
-                    client: clientType as any
-                });
-
+                console.log(`[SHOMA] Trying Innertube (${clientType})...`);
+                const info = await yt.getInfo(videoId, { client: clientType });
+                title = info.basic_info.title || title;
+                artist = info.basic_info.author || artist;
+                const stream = await info.download({ type: 'audio', quality: 'best', client: clientType });
                 buffer = await streamToBuffer(stream);
-                console.log(`[SHOMA] Innertube success with ${clientType}!`);
-                break; // We found a working client
+                if (buffer) break;
             } catch (e: any) {
-                console.warn(`[SHOMA] Innertube ${clientType} failed: ${e.message}`);
                 lastError = e.message;
-                if (e.message.includes('bot') || e.message.includes('400') || e.message.includes('login')) {
-                    continue;
-                }
-                break; 
             }
         }
 
-        // If Innertube failed all clients, try ytdl-core-enhanced
         if (!buffer) {
-            console.warn(`[SHOMA] All Innertube clients failed. Falling back to ytdl-core-enhanced...`);
+            console.log('[SHOMA] Trying Cobalt buffer fetch...');
             try {
-                const options: any = {
-                    quality: 'highestaudio',
-                    filter: 'audioonly',
-                    // Prevent ytdl from writing debug files to root
-                    requestOptions: {
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1'
-                        }
+                const cobaltRes = await fetch("https://api.cobalt.tools/api/json", {
+                    method: "POST",
+                    headers: { "Accept": "application/json", "Content-Type": "application/json" },
+                    body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, isAudioOnly: true, aFormat: "mp3" })
+                });
+                const cobaltData = await cobaltRes.json();
+                if (cobaltData.url) {
+                    const audioRes = await fetch(cobaltData.url);
+                    buffer = Buffer.from(await audioRes.arrayBuffer());
+                    console.log('[SHOMA] Cobalt SUCCESS');
+                }
+            } catch (e) {}
+        }
+
+        if (!buffer) {
+            console.log('[SHOMA] Trying Piped buffer fetch...');
+            const instances = ["https://pipedapi.kavin.rocks", "https://api.piped.victr.me"];
+            for (const instance of instances) {
+                try {
+                    const res = await fetch(`${instance}/streams/${videoId}`);
+                    const data = await res.json();
+                    const streamUrl = data.audioStreams?.find((s: any) => s.format === 'M4A')?.url || data.audioStreams?.[0]?.url;
+                    if (streamUrl) {
+                        const audioRes = await fetch(streamUrl);
+                        buffer = Buffer.from(await audioRes.arrayBuffer());
+                        console.log(`[SHOMA] Piped SUCCESS (${instance})`);
+                        break;
                     }
-                };
-                
-                if (finalCookieHeader) options.requestOptions.headers.cookie = finalCookieHeader;
-                if (poToken) options.poToken = poToken;
+                } catch (e) {}
+            }
+        }
 
-                const info = await ytdl.getInfo(videoId, options);
-                title = info.videoDetails.title || title;
-                artist = info.videoDetails.author.name || artist;
-
-                const stream = ytdl(videoId, options);
+        if (!buffer) {
+            console.log('[SHOMA] Trying ytdl-core fallback...');
+            try {
+                const stream = ytdl(videoId, { filter: 'audioonly', quality: 'highestaudio' });
                 buffer = await streamToBuffer(stream);
-                console.log(`[SHOMA] ytdl-core-enhanced success!`);
-            } catch (ytdlError: any) {
-                console.error(`[SHOMA] All download methods failed.`);
-                throw new Error(`YouTube Stream Error: ${ytdlError.message} (Last Innertube Error: ${lastError})`);
+            } catch (e) {
+                throw new Error(`All download methods failed: ${lastError}`);
             }
         }
     }
 
-    // Metadata Cleanup
     if (title.includes(' - ')) {
         const parts = title.split(' - ');
         artist = parts[0].trim();
@@ -223,15 +174,12 @@ export async function POST(req: NextRequest) {
     }
 
     if (!buffer) throw new Error("Could not obtain audio buffer");
-    console.log(`[SHOMA] Buffered ${buffer.length} bytes`);
 
-    // Inject ID3 tags
+    // Upload to iBroadcast
     const tags = { title, artist };
-    buffer = NodeID3.write(tags, buffer) || buffer;
-
-    // 3. Upload to iBroadcast
+    const taggedBuffer = NodeID3.write(tags, buffer) || buffer;
     const cleanFilename = `${artist} - ${title}.mp3`.replace(/[/\\?%*:|"<>]/g, '-');
-    const md5 = crypto.createHash('md5').update(buffer).digest('hex');
+    const md5 = crypto.createHash('md5').update(taggedBuffer).digest('hex');
 
     const formData = new FormData();
     formData.append('user_id', userId);
@@ -245,28 +193,15 @@ export async function POST(req: NextRequest) {
     formData.append('file_md5', md5);
     formData.append('title', title);
     formData.append('artist', artist);
-    formData.append('file', buffer, { filename: cleanFilename, contentType: 'audio/mpeg' });
+    formData.append('file', taggedBuffer, { filename: cleanFilename, contentType: 'audio/mpeg' });
 
     console.log(`[SHOMA] Uploading to iBroadcast...`);
-    
-    let uploadResult;
-    try {
-      const uploadResponse = await axios.post('https://upload.ibroadcast.com', formData, {
-        headers: {
-          ...formData.getHeaders(),
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
-        },
-        maxBodyLength: Infinity,
-        maxContentLength: Infinity
-      });
-      uploadResult = uploadResponse.data;
-    } catch (e: any) {
-      console.error("[SHOMA] iBroadcast axios error:", e.response?.data || e.message);
-      throw new Error(`iBroadcast API error (Status: ${e.response?.status || 500})`);
-    }
+    const uploadResponse = await axios.post('https://upload.ibroadcast.com', formData, {
+        headers: { ...formData.getHeaders() }
+    });
 
-    if (uploadResult.result === false) {
-      throw new Error(uploadResult.message || 'iBroadcast rejected upload');
+    if (uploadResponse.data.result === false) {
+        throw new Error(uploadResponse.data.message || 'iBroadcast upload failed');
     }
 
     return NextResponse.json({ success: true, title, artist });
