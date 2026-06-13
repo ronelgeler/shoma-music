@@ -19,6 +19,8 @@ export default function Player() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(1);
+  const [playStatus, setPlayStatus] = useState<'idle' | 'loading' | 'playing' | 'error'>('idle');
+  const [lastError, setLastError] = useState('');
 
   useEffect(() => {
     if (audioRef.current) {
@@ -29,12 +31,15 @@ export default function Player() {
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
+        setPlayStatus('loading');
         audioRef.current.play().catch(e => {
             console.error("[SHOMA] Playback failed:", e);
-            // Don't auto-pause, maybe user needs to interact
+            setPlayStatus('error');
+            setLastError(e.message || 'Playback failed');
         });
       } else {
         audioRef.current.pause();
+        setPlayStatus('idle');
       }
     }
   }, [isPlaying, currentTrack?.uid, currentTrack?.ytId]);
@@ -42,6 +47,7 @@ export default function Player() {
   // Force load on track change
   useEffect(() => {
     if (audioRef.current) {
+        setPlayStatus('loading');
         audioRef.current.load();
     }
   }, [currentTrack?.uid, currentTrack?.ytId]);
@@ -50,6 +56,9 @@ export default function Player() {
     if (audioRef.current) {
       setCurrentTime(audioRef.current.currentTime);
       setDuration(audioRef.current.duration || 0);
+      if (playStatus === 'loading' && audioRef.current.currentTime > 0) {
+        setPlayStatus('playing');
+      }
     }
   };
 
@@ -99,7 +108,12 @@ export default function Player() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="font-semibold text-sm truncate">{currentTrack.title}</div>
-              <div className="text-neutral-400 text-xs truncate">{currentTrack.artist}</div>
+              <div className="text-neutral-400 text-xs truncate flex items-center gap-2">
+                {currentTrack.artist}
+                {playStatus === 'loading' && <span className="text-blue-400 animate-pulse text-[10px] font-bold uppercase tracking-wider">• Connecting...</span>}
+                {playStatus === 'playing' && <span className="text-green-500 text-[10px] font-bold uppercase tracking-wider">• Live Stream</span>}
+                {playStatus === 'error' && <span className="text-red-500 text-[10px] font-bold uppercase tracking-wider" title={lastError}>• Error: Try Settings</span>}
+              </div>
             </div>
           </div>
           

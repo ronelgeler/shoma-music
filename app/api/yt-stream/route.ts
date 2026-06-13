@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Innertube, UniversalCache } from 'youtubei.js';
 
+// @ts-ignore
+import ytdl from 'ytdl-core-enhanced';
+
 export const maxDuration = 60;
 
 function parseCookies(str: string) {
@@ -29,13 +32,15 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: 'Missing video ID' }, { status: 400 });
     }
 
+    const finalCookie = parseCookies(cookie || '');
+
     try {
         console.log(`[SHOMA] Stream request for: ${videoId}`);
         
         const yt = await Innertube.create({
             cache: new UniversalCache(false),
             generate_session_locally: true,
-            cookie: parseCookies(cookie || '') || undefined,
+            cookie: finalCookie || undefined,
             po_token: poToken || undefined
         });
         
@@ -73,7 +78,31 @@ export async function GET(req: NextRequest) {
             }
         }
 
-        throw new Error(`All streaming attempts failed. Last error: ${lastError}`);
+        // FALLBACK TO ytdl-core-enhanced
+        console.warn(`[SHOMA] Innertube failed, trying ytdl-core-enhanced fallback...`);
+        try {
+            const stream = ytdl(videoId, {
+                filter: 'audioonly',
+                quality: 'highestaudio',
+                requestOptions: {
+                    headers: {
+                        cookie: finalCookie || undefined,
+                        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1'
+                    }
+                }
+            });
+
+            return new Response(stream as any, {
+                headers: {
+                    'Content-Type': 'audio/mpeg',
+                    'Accept-Ranges': 'bytes',
+                    'Cache-Control': 'public, max-age=3600',
+                },
+            });
+        } catch (ytdlError: any) {
+            throw new Error(`Fallback failed: ${ytdlError.message}`);
+        }
+
     } catch (error: any) {
         console.error('[SHOMA] Stream Global Error:', error.message);
         return NextResponse.json({ error: error.message }, { status: 500 });
