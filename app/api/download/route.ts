@@ -132,46 +132,53 @@ export async function POST(req: NextRequest) {
 
         console.log(`[SHOMA] Attempting download for ID: ${videoId}`);
         
-        try {
-            // 1. Try Innertube first
-            const clientToUse = poToken ? 'WEB' : 'IOS';
-            console.log(`[SHOMA] Trying Innertube (${clientToUse} client)...`);
+        const tryDownload = async (clientType: 'IOS' | 'TV' | 'WEB') => {
+            console.log(`[SHOMA] Trying Innertube (${clientType} client)...`);
             const info = await yt.getInfo(videoId, { 
-                client: clientToUse,
+                client: clientType,
                 po_token: poToken || undefined
             });
-            title = info.basic_info.title || 'Unknown Title';
-            artist = info.basic_info.author || 'Unknown Artist';
+            
+            title = info.basic_info.title || title;
+            artist = info.basic_info.author || artist;
             
             const stream = await info.download({
                 type: 'audio',
                 quality: 'best',
                 format: 'mp4',
-                client: clientToUse
+                client: clientType
             });
-            buffer = await streamToBuffer(stream);
+            return await streamToBuffer(stream);
+        };
+
+        try {
+            // 1. If logged in, use TV client immediately (most reliable)
+            if (youtubeTokens || poToken) {
+                buffer = await tryDownload('TV');
+            } else {
+                // 2. Otherwise try IOS first (fastest)
+                try {
+                    buffer = await tryDownload('IOS');
+                } catch (e: any) {
+                    console.warn(`[SHOMA] IOS failed, trying TV fallback...`);
+                    buffer = await tryDownload('TV');
+                }
+            }
             console.log(`[SHOMA] Innertube success!`);
         } catch (innertubeError: any) {
             console.warn(`[SHOMA] Innertube failed: ${innertubeError.message}. Falling back to ytdl-core-enhanced...`);
             
-            // 2. Fallback to ytdl-core-enhanced
+            // 3. Fallback to ytdl-core-enhanced
             try {
                 const options: any = {
                     quality: 'highestaudio',
                     filter: 'audioonly'
                 };
                 
-                // Pass cookies and poToken to ytdl
                 const headers: any = {};
                 if (finalCookieHeader) headers.cookie = finalCookieHeader;
-                
                 options.requestOptions = { headers };
-                
-                // ytdl-core-enhanced supports poToken via a specific option or env var
-                if (poToken) {
-                    // Some versions use a specific field, others use requestOptions
-                    options.poToken = poToken;
-                }
+                if (poToken) options.poToken = poToken;
 
                 const info = await ytdl.getInfo(videoId, options);
                 title = info.videoDetails.title || title;

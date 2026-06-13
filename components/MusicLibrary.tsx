@@ -4,7 +4,7 @@ import { loginToIBroadcast, fetchLibrary, deleteTrack, createPlaylist, appendToP
 import { usePlayerStore, Track, Playlist } from '@/lib/store';
 import TrackList from './TrackList';
 import SearchBar from './SearchBar';
-import { Loader2, DownloadCloud, Search, Music, Home, ListMusic, Plus, Settings, X } from 'lucide-react';
+import { Loader2, DownloadCloud, Search, Music, Home, ListMusic, Plus, Settings, X, Trash2, ShieldCheck } from 'lucide-react';
 
 export default function MusicLibrary() {
   const [email, setEmail] = useState('');
@@ -299,6 +299,15 @@ export default function MusicLibrary() {
     setIsSettingsOpen(false);
   };
 
+  const handleClearCredentials = () => {
+    if(confirm('Are you sure you want to clear all YouTube credentials?')) {
+        setYtCredentials(null);
+        setCookieInput('');
+        setPoTokenInput('');
+        setIsSettingsOpen(false);
+    }
+  };
+
   const handleDeleteTrack = async (trackId: string) => {
     if (!token || !userId) return;
     if (!confirm('Are you sure you want to delete this track?')) return;
@@ -517,9 +526,12 @@ export default function MusicLibrary() {
 
             {isSettingsOpen ? (
                 <div className="space-y-4 bg-black/40 p-4 rounded-lg border border-neutral-800 mb-4 animate-in fade-in slide-in-from-top-1">
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center border-b border-neutral-800 pb-2">
                         <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">YouTube Authentication</span>
-                        <button onClick={() => setIsSettingsOpen(false)} className="text-neutral-500 hover:text-white"><X size={16} /></button>
+                        <div className="flex items-center gap-2">
+                            <button onClick={handleClearCredentials} className="text-red-500 hover:text-red-400" title="Clear All"><Trash2 size={16} /></button>
+                            <button onClick={() => setIsSettingsOpen(false)} className="text-neutral-500 hover:text-white"><X size={16} /></button>
+                        </div>
                     </div>
 
                     <div className="space-y-3 pb-3 border-b border-neutral-800">
@@ -528,33 +540,40 @@ export default function MusicLibrary() {
                             <div className="bg-neutral-800 p-3 rounded text-center space-y-2">
                                 {authData ? (
                                     <>
-                                        <p className="text-[10px] text-neutral-400">Go to <a href={authData.url} target="_blank" className="text-white underline">{authData.url}</a> and enter:</p>
-                                        <p className="text-2xl font-mono font-bold tracking-widest text-white">{authData.code}</p>
-                                        <Loader2 className="animate-spin mx-auto text-neutral-500" size={16} />
+                                        <p className="text-[10px] text-neutral-400 leading-tight">Go to <a href={authData.url} target="_blank" className="text-white underline break-all">{authData.url}</a> and enter:</p>
+                                        <p className="text-2xl font-mono font-bold tracking-widest text-white py-1">{authData.code}</p>
+                                        <div className="flex items-center justify-center gap-2 text-[10px] text-neutral-500">
+                                            <Loader2 className="animate-spin" size={12} /> Waiting for confirmation...
+                                        </div>
                                     </>
                                 ) : (
-                                    <Loader2 className="animate-spin mx-auto text-white" size={20} />
+                                    <div className="py-4">
+                                        <Loader2 className="animate-spin mx-auto text-white" size={24} />
+                                        <p className="text-[10px] text-neutral-500 mt-2">Connecting to Google...</p>
+                                    </div>
                                 )}
                             </div>
                         ) : (
                             <button 
                                 onClick={startYoutubeAuth}
-                                className="w-full bg-red-600 text-white text-xs font-bold py-2.5 rounded-md flex items-center justify-center gap-2 hover:bg-red-700 transition"
+                                className="w-full bg-red-600 text-white text-xs font-bold py-3 rounded-md flex items-center justify-center gap-2 hover:bg-red-700 transition active:scale-95"
                             >
                                 <Music size={14} /> {ytCredentials?.tokens ? 'Re-login to YouTube' : 'Login to YouTube'}
                             </button>
                         )}
                         {ytCredentials?.tokens && !isAuthenticating && (
-                            <p className="text-[10px] text-green-500 text-center font-bold">✓ Logged in via OAuth</p>
+                            <div className="flex items-center justify-center gap-1.5 text-[10px] text-green-500 font-bold uppercase tracking-wider">
+                                <ShieldCheck size={14} /> Logged in via OAuth
+                            </div>
                         )}
                     </div>
 
                     <div className="space-y-3">
-                        <p className="text-[10px] text-neutral-500 font-medium">FALLBACK: Manual Tokens (If login fails)</p>
+                        <p className="text-[10px] text-neutral-500 font-medium uppercase tracking-tight">Fallback: Manual Tokens</p>
                         <div className="space-y-1">
                             <label className="text-[10px] text-neutral-500 uppercase font-bold">Cookies (JSON/Netscape)</label>
                             <textarea 
-                                className="w-full h-16 bg-neutral-800 border border-neutral-700 rounded p-2 text-[10px] text-white focus:outline-none focus:border-white"
+                                className="w-full h-16 bg-neutral-800 border border-neutral-700 rounded p-2 text-[10px] text-white focus:outline-none focus:border-white font-mono"
                                 placeholder="Paste cookies here..."
                                 value={cookieInput}
                                 onChange={e => setCookieInput(e.target.value)}
@@ -562,21 +581,21 @@ export default function MusicLibrary() {
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[10px] text-neutral-500 uppercase font-bold">PO Token</label>
+                            <label className="text-[10px] text-neutral-500 uppercase font-bold">PO Token (Bot Bypass)</label>
                             <input 
                                 type="text"
-                                className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-white"
+                                className="w-full bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-[10px] text-white focus:outline-none focus:border-white font-mono"
                                 placeholder="Paste PO Token here..."
                                 value={poTokenInput}
                                 onChange={e => setPoTokenInput(e.target.value)}
                             />
-                            <p className="text-[9px] text-neutral-600 mt-1">Get at <a href="https://po-token.pages.dev/" target="_blank" className="underline">po-token.pages.dev</a></p>
+                            <p className="text-[9px] text-neutral-600 mt-1">Generate at <a href="https://po-token.pages.dev/" target="_blank" className="underline hover:text-neutral-400 transition">po-token.pages.dev</a></p>
                         </div>
                     </div>
 
                     <button 
                         onClick={handleSaveCredentials}
-                        className="w-full bg-white text-black text-xs font-bold py-2.5 rounded-full mt-2 hover:scale-[1.02] transition-transform"
+                        className="w-full bg-white text-black text-xs font-bold py-3 rounded-full mt-2 hover:scale-[1.02] transition-transform active:scale-95 shadow-lg"
                     >
                         Save Manual Changes
                     </button>
@@ -617,12 +636,12 @@ export default function MusicLibrary() {
                           <Music size={16} className="text-neutral-500" />
                         )}
                       </div>
-                      <div className="flex-1 whitespace-nowrap overflow-x-auto scrollbar-hide">
-                        <p className="text-sm font-medium text-white">{res.title}</p>
-                        <p className="text-xs text-neutral-400">{res.artist}</p>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">{res.title}</p>
+                        <p className="text-xs text-neutral-400 truncate">{res.artist}</p>
                       </div>
-                      <span className="text-xs text-neutral-500 pr-2">{res.duration}</span>
-                      <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white" />
+                      <span className="text-xs text-neutral-500 pr-2 shrink-0">{res.duration}</span>
+                      <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white shrink-0" />
                     </button>
                   ))}
                 </div>
@@ -643,8 +662,8 @@ export default function MusicLibrary() {
                 </div>
               </div>
             )}
-            {downloadMsg && !isDownloading && downloadProgress === 0 && <p className="text-xs mt-2 text-neutral-400 italic">{downloadMsg}</p>}
-            {downloadMsg && downloadProgress >= 100 && <p className="text-xs mt-2 text-green-400 font-medium">{downloadMsg}</p>}
+            {downloadMsg && !isDownloading && downloadProgress === 0 && <p className="text-xs mt-2 text-neutral-400 italic leading-snug">{downloadMsg}</p>}
+            {downloadMsg && downloadProgress >= 100 && <p className="text-xs mt-2 text-green-400 font-medium leading-snug">{downloadMsg}</p>}
           </div>
         </div>
 
