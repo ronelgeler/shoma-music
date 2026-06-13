@@ -10,6 +10,9 @@ export interface Track {
   length?: number;
   file_id?: string;
   track_url?: string;
+  source?: 'ibroadcast' | 'youtube';
+  ytId?: string;
+  artwork?: string;
 }
 
 export interface Playlist {

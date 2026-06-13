@@ -61,7 +61,7 @@ export default function Player() {
 
   if (!currentTrack || !token || !userId) return null;
 
-  const streamUrl = getStreamUrl(currentTrack.uid, currentTrack.track_url, token, userId);
+  const streamUrl = getStreamUrl(currentTrack, token, userId);
 
   return (
     <div className="fixed bottom-0 left-0 right-0 bg-neutral-900 border-t border-neutral-800 p-4 pb-6 md:pb-4 text-white z-50">
@@ -72,12 +72,20 @@ export default function Player() {
         onLoadedMetadata={handleTimeUpdate}
         onEnded={handleEnded}
         autoPlay={isPlaying}
+        onError={(e) => {
+            console.error("[SHOMA] Audio Error:", e);
+            // Optionally auto-skip or show error
+        }}
       />
       <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row items-center justify-between gap-3 md:gap-0">
         <div className="flex items-center justify-between w-full md:w-1/3 space-x-4">
           <div className="flex items-center space-x-3 flex-1 min-w-0">
-            <div className="w-10 h-10 md:w-12 md:h-12 bg-neutral-800 rounded flex items-center justify-center shrink-0">
-              <span className="text-neutral-500 text-[10px] md:text-xs text-center whitespace-nowrap">No Cover</span>
+            <div className="w-10 h-10 md:w-12 md:h-12 bg-neutral-800 rounded flex items-center justify-center shrink-0 overflow-hidden">
+              {currentTrack.artwork ? (
+                <img src={currentTrack.artwork} alt="" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-neutral-500 text-[10px] md:text-xs text-center whitespace-nowrap">No Cover</span>
+              )}
             </div>
             <div className="min-w-0 flex-1">
               <div className="font-semibold text-sm truncate">{currentTrack.title}</div>

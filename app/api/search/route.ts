@@ -27,12 +27,15 @@ export async function POST(req: NextRequest) {
         durationStr = video.duration.text || video.duration.toString();
       }
       return {
-        id: video.id,
+        uid: `yt-${video.id}`,
+        ytId: video.id,
         title: video.title?.text || video.title || 'Unknown Title',
         artist: video.author?.name || 'Unknown Artist',
+        album: 'YouTube',
         duration: durationStr,
         url: `https://www.youtube.com/watch?v=${video.id}`,
-        artwork: video.thumbnails?.[0]?.url || ''
+        artwork: video.thumbnails?.[0]?.url || '',
+        source: 'youtube'
       };
     });
 

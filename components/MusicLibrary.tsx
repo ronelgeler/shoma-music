@@ -22,6 +22,9 @@ export default function MusicLibrary() {
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadMsg, setDownloadMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
+  const [uploadingUids, setUploadingUids] = useState<string[]>([]);
+
+  const { setCurrentTrack, setIsPlaying, setQueue, setQueueIndex } = usePlayerStore();
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [cookieInput, setCookieInput] = useState('');
@@ -32,6 +35,75 @@ export default function MusicLibrary() {
   const [activePlaylistId, setActivePlaylistId] = useState<string | null>(null);
   const [isCreatingPlaylist, setIsCreatingPlaylist] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
+
+  const handleYouTubePlay = async (result: any) => {
+    if (!token || !userId) return;
+
+    // 1. Immediate Playback
+    const ytTrack: Track = {
+        uid: result.uid,
+        ytId: result.ytId,
+        title: result.title,
+        artist: result.artist,
+        album: 'YouTube',
+        artwork: result.artwork,
+        source: 'youtube',
+        length: 0
+    };
+
+    setQueue([ytTrack]);
+    setQueueIndex(0);
+    setCurrentTrack(ytTrack);
+    setIsPlaying(true);
+    setSearchResults([]);
+
+    // 2. Background Download/Upload
+    if (uploadingUids.includes(result.uid)) return;
+    
+    setUploadingUids(prev => [...prev, result.uid]);
+    setDownloadMsg(`Adding "${result.title}" to library in background...`);
+    
+    try {
+        const res = await fetch('/api/download', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                query: result.url, 
+                token, 
+                userId,
+                youtubeCookie: ytCredentials?.cookie,
+                poToken: ytCredentials?.poToken,
+                youtubeTokens: ytCredentials?.tokens
+            })
+        });
+        
+        const data = await res.json();
+        if (res.ok && data.success) {
+            // Wait for it to appear
+            let attempts = 0;
+            let found = false;
+            while (attempts < 15 && !found) {
+                await new Promise(r => setTimeout(r, 3000));
+                const libData = await fetchLibrary(token, userId);
+                const rawTracks = libData?.library?.tracks || libData?.tracks || libData;
+                const trackList = Array.isArray(rawTracks) ? rawTracks : Object.values(rawTracks);
+                
+                // Try to find by title/artist since UID will change
+                found = trackList.some((t: any) => {
+                    const tTitle = t.title || t.name || t.t;
+                    const tArtist = t.artist || t.artist_name || t.a;
+                    return tTitle === data.title && tArtist === data.artist;
+                });
+                attempts++;
+            }
+            await loadLibrary(token, userId);
+        }
+    } catch (err) {
+        console.error("[SHOMA] Background upload failed:", err);
+    } finally {
+        setUploadingUids(prev => prev.filter(uid => uid !== result.uid));
+    }
+  };
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -626,7 +698,7 @@ export default function MusicLibrary() {
                   {searchResults.map((res, i) => (
                     <button
                       key={i}
-                      onClick={() => handleDownloadSelection(res.url)}
+                      onClick={() => handleYouTubePlay(res)}
                       className="w-full text-left flex items-center gap-3 p-2 hover:bg-neutral-800 rounded-lg transition-colors group"
                     >
                       <div className="w-10 h-10 bg-neutral-800 rounded flex items-center justify-center flex-shrink-0 overflow-hidden">
@@ -640,8 +712,14 @@ export default function MusicLibrary() {
                         <p className="text-sm font-medium text-white truncate">{res.title}</p>
                         <p className="text-xs text-neutral-400 truncate">{res.artist}</p>
                       </div>
-                      <span className="text-xs text-neutral-500 pr-2 shrink-0">{res.duration}</span>
-                      <DownloadCloud size={16} className="text-neutral-500 group-hover:text-white shrink-0" />
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-[10px] text-neutral-500 pr-2 shrink-0">{res.duration}</span>
+                        {uploadingUids.includes(res.uid) ? (
+                            <Loader2 size={12} className="animate-spin text-white mr-2" />
+                        ) : (
+                            <Play size={12} className="text-neutral-500 group-hover:text-white mr-2" fill="currentColor" />
+                        )}
+                      </div>
                     </button>
                   ))}
                 </div>
@@ -668,9 +746,21 @@ export default function MusicLibrary() {
         </div>
 
         {filteredTracks.length === 0 ? (
-          <div className="text-neutral-400 text-center mt-12 py-20 border-2 border-dashed border-neutral-800 rounded-2xl">
+          <div className="text-neutral-400 text-center mt-12 py-20 border-2 border-dashed border-neutral-800 rounded-2xl flex flex-col items-center">
             <p className="text-lg mb-2">{search ? 'No tracks match your search.' : (activePlaylistId ? 'This playlist is empty.' : 'No tracks found.')}</p>
-            <p className="text-sm">Type a song name above to start your collection!</p>
+            {search && (
+                <button 
+                    onClick={() => {
+                        setDownloadQuery(search);
+                        handleSearchSubmit(new Event('submit') as any);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    className="mt-4 flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-white px-6 py-3 rounded-full transition-all border border-neutral-700 hover:border-neutral-500"
+                >
+                    <Search size={18} /> Search YouTube for "{search}"
+                </button>
+            )}
+            {!search && <p className="text-sm">Type a song name above to start your collection!</p>}
           </div>
         ) : (
           <TrackList 

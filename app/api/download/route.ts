@@ -13,7 +13,7 @@ process.env.YTDL_DEBUG_PATH = '/tmp';
 // @ts-ignore
 import ytdl from 'ytdl-core-enhanced';
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 function parseCookies(str: string) {
     if (!str) return [];

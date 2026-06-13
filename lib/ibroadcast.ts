@@ -109,7 +109,16 @@ export async function appendToPlaylist(playlistId: string, trackIds: string[], t
   return response.json();
 }
 
-export function getStreamUrl(trackId: string, trackUrl: string | undefined, token: string, userId: string) {
+import { Track } from './store';
+
+export function getStreamUrl(track: Track, token: string, userId: string) {
+  if (track.source === 'youtube' && track.ytId) {
+    return `/api/yt-stream?id=${track.ytId}`;
+  }
+  
+  const trackId = track.file_id || track.uid;
+  const trackUrl = track.track_url;
+
   if (trackUrl) {
     const cleanTrackUrl = trackUrl.startsWith('/') ? trackUrl : `/${trackUrl}`;
     return `https://streaming.ibroadcast.com${cleanTrackUrl}?Signature=${token}&file_id=${trackId}&user_id=${userId}&platform=shoma-music&version=1.4`;
