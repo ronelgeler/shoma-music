@@ -29,12 +29,22 @@ export default function Player() {
   useEffect(() => {
     if (audioRef.current) {
       if (isPlaying) {
-        audioRef.current.play().catch(() => setIsPlaying(false));
+        audioRef.current.play().catch(e => {
+            console.error("[SHOMA] Playback failed:", e);
+            // Don't auto-pause, maybe user needs to interact
+        });
       } else {
         audioRef.current.pause();
       }
     }
-  }, [isPlaying, currentTrack, setIsPlaying]);
+  }, [isPlaying, currentTrack?.uid, currentTrack?.ytId]);
+
+  // Force load on track change
+  useEffect(() => {
+    if (audioRef.current) {
+        audioRef.current.load();
+    }
+  }, [currentTrack?.uid, currentTrack?.ytId]);
 
   const handleTimeUpdate = () => {
     if (audioRef.current) {
