@@ -23,6 +23,7 @@ export default function MusicLibrary() {
   const [downloadMsg, setDownloadMsg] = useState('');
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [uploadingUids, setUploadingUids] = useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, { title: string, progress: number, status: 'pending' | 'done' | 'error' }>>({});
 
   const { setCurrentTrack, setIsPlaying, setQueue, setQueueIndex } = usePlayerStore();
 
@@ -61,7 +62,22 @@ export default function MusicLibrary() {
     if (uploadingUids.includes(result.uid)) return;
     
     setUploadingUids(prev => [...prev, result.uid]);
-    setDownloadMsg(`Adding "${result.title}" to library in background...`);
+    setUploadProgress(prev => ({ 
+        ...prev, 
+        [result.uid]: { title: result.title, progress: 0, status: 'pending' } 
+    }));
+    
+    // Simulated progress increment
+    const progInterval = setInterval(() => {
+        setUploadProgress(prev => {
+            const current = prev[result.uid]?.progress || 0;
+            if (current >= 92) return prev;
+            return { 
+                ...prev, 
+                [result.uid]: { ...prev[result.uid], progress: current + Math.random() * 2.5 } 
+            };
+        });
+    }, 1000);
     
     try {
         const res = await fetch('/api/download', {
@@ -79,16 +95,20 @@ export default function MusicLibrary() {
         
         const data = await res.json();
         if (res.ok && data.success) {
+            setUploadProgress(prev => ({ 
+                ...prev, 
+                [result.uid]: { ...prev[result.uid], progress: 100, status: 'done' } 
+            }));
+            
             // Wait for it to appear
             let attempts = 0;
             let found = false;
-            while (attempts < 15 && !found) {
-                await new Promise(r => setTimeout(r, 3000));
+            while (attempts < 10 && !found) {
+                await new Promise(r => setTimeout(r, 4500));
                 const libData = await fetchLibrary(token, userId);
                 const rawTracks = libData?.library?.tracks || libData?.tracks || libData;
                 const trackList = Array.isArray(rawTracks) ? rawTracks : Object.values(rawTracks);
                 
-                // Try to find by title/artist since UID will change
                 found = trackList.some((t: any) => {
                     const tTitle = t.title || t.name || t.t;
                     const tArtist = t.artist || t.artist_name || t.a;
@@ -97,11 +117,25 @@ export default function MusicLibrary() {
                 attempts++;
             }
             await loadLibrary(token, userId);
+        } else {
+            throw new Error(data.error || 'Failed');
         }
     } catch (err) {
-        console.error("[SHOMA] Background upload failed:", err);
+        setUploadProgress(prev => ({ 
+            ...prev, 
+            [result.uid]: { ...prev[result.uid], status: 'error' } 
+        }));
     } finally {
-        setUploadingUids(prev => prev.filter(uid => uid !== result.uid));
+        clearInterval(progInterval);
+        // Clear after 10 seconds
+        setTimeout(() => {
+            setUploadingUids(prev => prev.filter(uid => uid !== result.uid));
+            setUploadProgress(prev => {
+                const next = { ...prev };
+                delete next[result.uid];
+                return next;
+            });
+        }, 10000);
     }
   };
 
@@ -743,6 +777,33 @@ export default function MusicLibrary() {
             {downloadMsg && !isDownloading && downloadProgress === 0 && <p className="text-xs mt-2 text-neutral-400 italic leading-snug">{downloadMsg}</p>}
             {downloadMsg && downloadProgress >= 100 && <p className="text-xs mt-2 text-green-400 font-medium leading-snug">{downloadMsg}</p>}
           </div>
+
+          {/* Active Uploads / Progress Section */}
+          {Object.keys(uploadProgress).length > 0 && (
+            <div className="bg-neutral-900 p-4 rounded-xl border border-neutral-800 w-full xl:w-96 shadow-lg relative shrink-0">
+                <h3 className="text-xs font-bold text-neutral-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                    <Loader2 size={14} className="animate-spin" /> Active Tasks
+                </h3>
+                <div className="space-y-4">
+                    {Object.entries(uploadProgress).map(([uid, task]) => (
+                        <div key={uid} className="space-y-1.5">
+                            <div className="flex justify-between items-center gap-4">
+                                <span className="text-[10px] text-white font-medium truncate flex-1">{task.title}</span>
+                                <span className={`text-[9px] font-bold uppercase tracking-wider ${task.status === 'done' ? 'text-green-500' : task.status === 'error' ? 'text-red-500' : 'text-neutral-500'}`}>
+                                    {task.status === 'done' ? 'Added' : task.status === 'error' ? 'Failed' : `${Math.round(task.progress)}%`}
+                                </span>
+                            </div>
+                            <div className="w-full h-1.5 bg-neutral-800 rounded-full overflow-hidden border border-neutral-700/30">
+                                <div 
+                                    className={`h-full transition-all duration-700 ease-out ${task.status === 'done' ? 'bg-green-500' : task.status === 'error' ? 'bg-red-500' : 'bg-white shadow-[0_0_8px_rgba(255,255,255,0.3)]'}`}
+                                    style={{ width: `${task.progress}%` }}
+                                />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+          )}
         </div>
 
         {filteredTracks.length === 0 ? (

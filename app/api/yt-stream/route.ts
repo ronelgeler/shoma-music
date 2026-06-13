@@ -3,7 +3,6 @@ import { Innertube } from 'youtubei.js';
 
 export const maxDuration = 60;
 
-// Cache the Innertube instance for faster subsequent requests
 let ytInstance: Innertube | null = null;
 async function getYt() {
     if (!ytInstance) {
@@ -24,42 +23,30 @@ export async function GET(req: NextRequest) {
         console.log(`[SHOMA] Streaming YouTube audio for ID: ${videoId}`);
         const yt = await getYt();
         
-        // Use multiple clients for robustness
-        const clients: ('YTMUSIC_ANDROID' | 'TV' | 'ANDROID_VR' | 'MWEB')[] = ['YTMUSIC_ANDROID', 'TV', 'ANDROID_VR', 'MWEB'];
-        let lastError = '';
+        // Use ANDROID_MUSIC client as it's often most reliable for audio-only
+        const info = await yt.getInfo(videoId, { client: 'ANDROID_MUSIC' });
+        const format = info.chooseFormat({ type: 'audio', quality: 'best' });
         
-        for (const clientType of clients) {
-            try {
-                const info = await yt.getInfo(videoId, { client: clientType as any });
-                const stream = await info.download({
-                    type: 'audio',
-                    quality: 'best',
-                    format: 'mp4',
-                    client: clientType as any
-                });
+        if (!format) throw new Error('No suitable audio format found');
+        
+        const stream = await info.download({
+            type: 'audio',
+            quality: 'best',
+            format: 'mp4',
+            client: 'ANDROID_MUSIC'
+        });
 
-                console.log(`[SHOMA] Successfully started stream with client: ${clientType}`);
-
-                // Return a streaming response with proper headers
-                return new Response(stream as any, {
-                    headers: {
-                        'Content-Type': 'audio/mp4',
-                        'Accept-Ranges': 'bytes',
-                        'Cache-Control': 'public, max-age=3600',
-                        'Content-Disposition': `attachment; filename="${videoId}.mp4"`
-                    },
-                });
-            } catch (e: any) {
-                console.warn(`[SHOMA] Stream client ${clientType} failed: ${e.message}`);
-                lastError = e.message;
-            }
-        }
-
-        throw new Error(`Failed to stream from any client: ${lastError}`);
+        // Convert the ReadableStream to a Response
+        return new Response(stream as any, {
+            headers: {
+                'Content-Type': 'audio/mp4',
+                'Cache-Control': 'public, max-age=3600',
+                'Accept-Ranges': 'bytes',
+            },
+        });
     } catch (error: any) {
         console.error('[SHOMA] Stream API Error:', error.message);
-        // If the cached instance failed, try resetting it for the next request
-        ytInstance = null;
+        ytInstance = null; // Reset on failure
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 }
