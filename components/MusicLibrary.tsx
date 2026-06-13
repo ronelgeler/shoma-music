@@ -4,7 +4,7 @@ import { loginToIBroadcast, fetchLibrary, deleteTrack, createPlaylist, appendToP
 import { usePlayerStore, Track, Playlist } from '@/lib/store';
 import TrackList from './TrackList';
 import SearchBar from './SearchBar';
-import { Loader2, DownloadCloud, Search, Music, Home, ListMusic, Plus, Settings, X, Trash2, ShieldCheck } from 'lucide-react';
+import { Loader2, DownloadCloud, Search, Music, Home, ListMusic, Plus, Settings, X, Trash2, ShieldCheck, Play } from 'lucide-react';
 
 export default function MusicLibrary() {
   const [email, setEmail] = useState('');
