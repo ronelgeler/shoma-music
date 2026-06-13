@@ -25,68 +25,86 @@ function parseCookies(str: string) {
 export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const videoId = searchParams.get('id');
-    const cookie = searchParams.get('c');
-    const poToken = searchParams.get('po');
 
     if (!videoId) {
         return NextResponse.json({ error: 'Missing video ID' }, { status: 400 });
     }
 
-    const finalCookie = parseCookies(cookie || '');
-
     try {
-        console.log(`[SHOMA] Stream request for: ${videoId}`);
+        console.log(`[SHOMA] Anonymous stream request for: ${videoId}`);
         
+        // 1. Primary: Innertube with 'TV' client (Best for anonymous streaming)
         const yt = await Innertube.create({
             cache: new UniversalCache(false),
-            generate_session_locally: true,
-            cookie: finalCookie || undefined,
-            po_token: poToken || undefined
+            generate_session_locally: true
         });
         
-        const clients: any[] = ['TV', 'ANDROID_VR', 'MWEB', 'YTMUSIC_ANDROID'];
-        let lastError = '';
+        try {
+            console.log(`[SHOMA] Attempting TV client stream for ${videoId}`);
+            const info = await yt.getInfo(videoId, 'TV');
+            const format = info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' });
 
-        for (const clientType of clients) {
-            try {
-                console.log(`[SHOMA] Stream attempt (${clientType}) for ${videoId}`);
-                const info = await yt.getInfo(videoId, clientType);
-                const format = info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' });
-
-                if (!format) continue;
-
+            if (format) {
                 const stream = await info.download({
                     type: 'audio',
                     quality: 'best',
                     format: 'mp4',
-                    client: clientType
+                    client: 'TV'
                 });
 
-                console.log(`[SHOMA] Stream SUCCESS (${clientType})`);
-
+                console.log(`[SHOMA] TV client stream SUCCESS`);
                 return new Response(stream as any, {
                     headers: {
                         'Content-Type': 'audio/mp4',
                         'Accept-Ranges': 'bytes',
                         'Cache-Control': 'public, max-age=3600',
-                        'Content-Disposition': 'inline'
                     },
                 });
-            } catch (e: any) {
-                console.warn(`[SHOMA] Client ${clientType} failed:`, e.message);
-                lastError = e.message;
             }
+        } catch (e: any) {
+            console.warn(`[SHOMA] TV client failed:`, e.message);
         }
 
-        // FALLBACK TO ytdl-core-enhanced
-        console.warn(`[SHOMA] Innertube failed, trying ytdl-core-enhanced fallback...`);
+        // 2. Fallback: Cobalt API (Bypasses many restrictions anonymously)
+        console.warn(`[SHOMA] Trying Cobalt fallback...`);
+        try {
+            const cobaltRes = await fetch("https://api.cobalt.tools/api/json", {
+                method: "POST",
+                headers: {
+                    "Accept": "application/json",
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    url: `https://www.youtube.com/watch?v=${videoId}`,
+                    isAudioOnly: true,
+                    aFormat: "mp3"
+                })
+            });
+            
+            const cobaltData = await cobaltRes.json();
+            if (cobaltData.url) {
+                console.log(`[SHOMA] Cobalt stream redirect SUCCESS`);
+                const audioRes = await fetch(cobaltData.url);
+                return new Response(audioRes.body as any, {
+                    headers: {
+                        'Content-Type': 'audio/mpeg',
+                        'Accept-Ranges': 'bytes',
+                        'Cache-Control': 'public, max-age=3600',
+                    },
+                });
+            }
+        } catch (cobaltError: any) {
+            console.warn(`[SHOMA] Cobalt failed:`, cobaltError.message);
+        }
+
+        // 3. Final Fallback: ytdl-core-enhanced
+        console.warn(`[SHOMA] Trying ytdl-core fallback...`);
         try {
             const stream = ytdl(videoId, {
                 filter: 'audioonly',
                 quality: 'highestaudio',
                 requestOptions: {
                     headers: {
-                        cookie: finalCookie || undefined,
                         'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1'
                     }
                 }
@@ -100,7 +118,7 @@ export async function GET(req: NextRequest) {
                 },
             });
         } catch (ytdlError: any) {
-            throw new Error(`Fallback failed: ${ytdlError.message}`);
+            throw new Error(`All anonymous methods failed: ${ytdlError.message}`);
         }
 
     } catch (error: any) {
