@@ -5,6 +5,8 @@ import crypto from 'crypto';
 import NodeID3 from 'node-id3';
 import { Innertube } from 'youtubei.js';
 import scdl from 'soundcloud-downloader';
+// @ts-ignore
+import ytdl from 'ytdl-core-enhanced';
 
 export const maxDuration = 60;
 
@@ -49,6 +51,23 @@ function cookiesToString(cookies: { name: string; value: string }[]) {
     return cookies.map(c => `${c.name}=${c.value}`).join('; ');
 }
 
+async function streamToBuffer(stream: any): Promise<Buffer> {
+    const chunks: any[] = [];
+    if (typeof stream.getReader === 'function') {
+        const reader = stream.getReader();
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            chunks.push(value);
+        }
+    } else {
+        for await (const chunk of stream) {
+            chunks.push(chunk);
+        }
+    }
+    return Buffer.concat(chunks);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { query, token, userId, youtubeCookie } = await req.json();
@@ -64,74 +83,88 @@ export async function POST(req: NextRequest) {
     let buffer: Buffer | null = null;
     let targetUrl = query;
 
-    try {
-        const cookieStr = youtubeCookie || process.env.YOUTUBE_COOKIE;
-        const parsedCookies = parseCookies(cookieStr || '');
-        const finalCookieHeader = cookiesToString(parsedCookies);
+    const cookieStr = youtubeCookie || process.env.YOUTUBE_COOKIE;
+    const parsedCookies = parseCookies(cookieStr || '');
+    const finalCookieHeader = cookiesToString(parsedCookies);
 
-        const yt = await Innertube.create({ 
-            cookie: finalCookieHeader || undefined,
-            generate_session_locally: true
-        });
+    const yt = await Innertube.create({ 
+        cookie: finalCookieHeader || undefined,
+        generate_session_locally: true
+    });
 
-        if (!targetUrl.includes('http')) {
-             console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
-             const searchResults = await yt.search(targetUrl, { type: 'video' });
-             if (!searchResults.videos.length) {
-                 throw new Error("No videos found on YouTube");
-             }
-             targetUrl = `https://www.youtube.com/watch?v=${(searchResults.videos[0] as any).id}`;
+    if (!targetUrl.includes('http')) {
+         console.log(`[SHOMA] Text query detected, searching YouTube: ${targetUrl}`);
+         const searchResults = await yt.search(targetUrl, { type: 'video' });
+         if (!searchResults.videos.length) {
+             throw new Error("No videos found on YouTube");
+         }
+         targetUrl = `https://www.youtube.com/watch?v=${(searchResults.videos[0] as any).id}`;
+    }
+
+    if (targetUrl.includes('soundcloud.com')) {
+        console.log(`[SHOMA] Extracting SoundCloud metadata for: ${targetUrl}`);
+        const scInfo = await scdl.getInfo(targetUrl);
+        title = scInfo.title || 'Unknown Title';
+        artist = scInfo.user?.username || 'Unknown Artist';
+        
+        console.log(`[SHOMA] Downloading SoundCloud audio...`);
+        const stream = await scdl.download(targetUrl);
+        buffer = await streamToBuffer(stream);
+    } else {
+        // Extract the video ID from the URL
+        let videoId = targetUrl;
+        if (targetUrl.includes('v=')) {
+            videoId = targetUrl.split('v=')[1].split('&')[0];
+        } else if (targetUrl.includes('youtu.be/')) {
+            videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
         }
 
-        if (targetUrl.includes('soundcloud.com')) {
-            console.log(`[SHOMA] Extracting SoundCloud metadata for: ${targetUrl}`);
-            const scInfo = await scdl.getInfo(targetUrl);
-            title = scInfo.title || 'Unknown Title';
-            artist = scInfo.user?.username || 'Unknown Artist';
-            
-            console.log(`[SHOMA] Downloading SoundCloud audio...`);
-            const stream = await scdl.download(targetUrl);
-            const chunks: any[] = [];
-            for await (const chunk of stream) {
-                chunks.push(chunk);
-            }
-            buffer = Buffer.concat(chunks);
-        } else {
-            // Extract the video ID from the URL
-            let videoId = targetUrl;
-            if (targetUrl.includes('v=')) {
-                videoId = targetUrl.split('v=')[1].split('&')[0];
-            } else if (targetUrl.includes('youtu.be/')) {
-                videoId = targetUrl.split('youtu.be/')[1].split('?')[0];
-            }
-
-            console.log(`[SHOMA] Extracting YouTube metadata via Innertube for ID: ${videoId}`);
-            const info = await yt.getInfo(videoId, { client: 'YTMUSIC_ANDROID' });
-
+        console.log(`[SHOMA] Attempting download for ID: ${videoId}`);
+        
+        try {
+            // 1. Try Innertube first (metadata + stream)
+            console.log(`[SHOMA] Trying Innertube (IOS client)...`);
+            const info = await yt.getInfo(videoId, { client: 'IOS' });
             title = info.basic_info.title || 'Unknown Title';
             artist = info.basic_info.author || 'Unknown Artist';
-            console.log(`[SHOMA] YouTube Found: ${title} by ${artist}`);
-
-            console.log(`[SHOMA] Downloading best audio via Innertube (YTMUSIC_ANDROID client)...`);
+            
             const stream = await info.download({
                 type: 'audio',
                 quality: 'best',
                 format: 'mp4',
-                client: 'YTMUSIC_ANDROID'
+                client: 'IOS'
             });
+            buffer = await streamToBuffer(stream);
+            console.log(`[SHOMA] Innertube success!`);
+        } catch (innertubeError: any) {
+            console.warn(`[SHOMA] Innertube failed: ${innertubeError.message}. Falling back to ytdl-core-enhanced...`);
             
-            const chunks: any[] = [];
-            const reader = stream.getReader();
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
-                chunks.push(value);
+            // 2. Fallback to ytdl-core-enhanced
+            try {
+                const options: any = {
+                    quality: 'highestaudio',
+                    filter: 'audioonly'
+                };
+                if (finalCookieHeader) {
+                    options.requestOptions = {
+                        headers: {
+                            cookie: finalCookieHeader
+                        }
+                    };
+                }
+
+                const info = await ytdl.getInfo(videoId, options);
+                title = info.videoDetails.title || title;
+                artist = info.videoDetails.author.name || artist;
+
+                const stream = ytdl(videoId, options);
+                buffer = await streamToBuffer(stream);
+                console.log(`[SHOMA] ytdl-core-enhanced success!`);
+            } catch (ytdlError: any) {
+                console.error(`[SHOMA] All download methods failed.`);
+                throw new Error(`YouTube Stream Error: ${ytdlError.message}`);
             }
-            buffer = Buffer.concat(chunks);
         }
-    } catch (error: any) {
-        console.error(`[SHOMA] YouTube/SC Error:`, error);
-        throw new Error(`Failed to find or stream song: ${error.message}`);
     }
 
     // Metadata Cleanup
