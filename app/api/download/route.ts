@@ -71,7 +71,8 @@ export async function POST(req: NextRequest) {
 
         const yt = await Innertube.create({ 
             cookie: finalCookieHeader || undefined,
-            generate_session_locally: true
+            generate_session_locally: true,
+            client_type: 'ANDROID'
         });
 
         if (!targetUrl.includes('http')) {
