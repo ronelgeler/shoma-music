@@ -5,6 +5,11 @@ import crypto from 'crypto';
 import NodeID3 from 'node-id3';
 import { Innertube } from 'youtubei.js';
 import scdl from 'soundcloud-downloader';
+
+// Prevent ytdl-core-enhanced from writing to read-only filesystem
+process.env.YTDL_NO_DEBUG_FILE = '1';
+process.env.YTDL_DEBUG_PATH = '/tmp';
+
 // @ts-ignore
 import ytdl from 'ytdl-core-enhanced';
 
