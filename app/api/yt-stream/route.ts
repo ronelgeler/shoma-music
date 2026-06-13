@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
         
         try {
             console.log(`[SHOMA] Attempting TV client stream for ${videoId}`);
-            const info = await yt.getInfo(videoId, 'TV');
+            const info = await yt.getInfo(videoId, { client: 'TV' as any });
             const format = info.chooseFormat({ type: 'audio', quality: 'best', format: 'mp4' });
 
             if (format) {
