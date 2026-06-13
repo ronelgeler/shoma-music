@@ -93,11 +93,13 @@ export async function POST(req: NextRequest) {
         po_token: poToken || process.env.YOUTUBE_PO_TOKEN || undefined
     });
 
-    // If we have OAuth tokens, sign in
+    // If we have OAuth tokens, sign in and WAIT for session to be ready
     if (youtubeTokens) {
         console.log(`[SHOMA] Using YouTube OAuth tokens...`);
         try {
             await yt.session.signIn(youtubeTokens);
+            // Small delay to ensure session is applied internally
+            await new Promise(resolve => setTimeout(resolve, 500));
         } catch (authError: any) {
             console.warn(`[SHOMA] OAuth Sign-in failed: ${authError.message}`);
         }
@@ -132,7 +134,10 @@ export async function POST(req: NextRequest) {
 
         console.log(`[SHOMA] Attempting download for ID: ${videoId}`);
         
-        const clients: ('TV' | 'MWEB' | 'WEB' | 'IOS')[] = ['TV', 'MWEB', 'WEB', 'IOS'];
+        // Use Android Music or TV for logged in users, as they handle 'login required' videos better
+        const clients: ('YTMUSIC_ANDROID' | 'TV' | 'MWEB' | 'WEB' | 'IOS')[] = 
+            youtubeTokens ? ['YTMUSIC_ANDROID', 'TV', 'MWEB'] : ['TV', 'IOS', 'MWEB', 'WEB'];
+        
         let lastError = '';
 
         for (const clientType of clients) {
@@ -141,7 +146,7 @@ export async function POST(req: NextRequest) {
                 
                 // Get info first
                 const info = await yt.getInfo(videoId, { 
-                    client: clientType,
+                    client: clientType as any,
                     po_token: poToken || undefined
                 });
 
@@ -151,7 +156,7 @@ export async function POST(req: NextRequest) {
                     type: 'audio',
                     quality: 'best',
                     format: 'mp4',
-                    client: clientType
+                    client: clientType as any
                 });
 
                 buffer = await streamToBuffer(stream);
@@ -160,11 +165,10 @@ export async function POST(req: NextRequest) {
             } catch (e: any) {
                 console.warn(`[SHOMA] Innertube ${clientType} failed: ${e.message}`);
                 lastError = e.message;
-                // If it's a bot error, continue to next client. 
-                // If it's something else (like 404), maybe we should stop?
-                if (e.message.includes('bot') || e.message.includes('400')) {
+                if (e.message.includes('bot') || e.message.includes('400') || e.message.includes('login')) {
                     continue;
                 }
+                break; 
             }
         }
 
@@ -174,14 +178,16 @@ export async function POST(req: NextRequest) {
             try {
                 const options: any = {
                     quality: 'highestaudio',
-                    filter: 'audioonly'
+                    filter: 'audioonly',
+                    // Prevent ytdl from writing debug files to root
+                    requestOptions: {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1'
+                        }
+                    }
                 };
                 
-                const headers: any = {
-                    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_8 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.2 Mobile/15E148 Safari/604.1'
-                };
-                if (finalCookieHeader) headers.cookie = finalCookieHeader;
-                options.requestOptions = { headers };
+                if (finalCookieHeader) options.requestOptions.headers.cookie = finalCookieHeader;
                 if (poToken) options.poToken = poToken;
 
                 const info = await ytdl.getInfo(videoId, options);
